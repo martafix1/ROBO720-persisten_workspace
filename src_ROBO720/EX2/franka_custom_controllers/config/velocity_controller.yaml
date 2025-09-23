@@ -1,0 +1,22 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000  # Hz
+    
+    # Joint state broadcaster (required to publish joint states)
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    
+    # Your custom velocity controller
+    franka_velocity_controller:
+      type: franka_custom_controllers/VelocityCommandController
+
+franka_velocity_controller:
+  ros__parameters:
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7

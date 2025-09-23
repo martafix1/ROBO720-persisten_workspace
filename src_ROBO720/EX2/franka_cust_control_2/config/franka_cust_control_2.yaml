@@ -1,0 +1,36 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000  # Hz
+
+    # Standard joint state broadcaster (keep this)
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Your custom controller - this references your C++ plugin
+    controller_v1:
+     type: "MyController_nameOfPlugin"
+
+
+# Configuration for your custom C++ controller
+# controller_v1:
+  # ros__parameters:
+  #   # Add any parameters your controller needs
+  #   # These will be available in your on_configure() method
+  #   my_custom_parameter: 1.0
+  #   another_parameter: "example"
+  #type: franka_cust_control_2/MyController_nameOfPlugin
+
+# Joint state broadcaster configuration (keep as is)
+joint_state_broadcaster:
+  ros__parameters:
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+    interfaces:
+      - position
+      - velocity

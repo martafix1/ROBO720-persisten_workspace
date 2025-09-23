@@ -1,0 +1,110 @@
+@startuml Franka_Gazebo_File_Dependencies
+
+!define LAUNCH_COLOR #E3F2FD
+!define CONFIG_COLOR #E8F5E8  
+!define ROBOT_COLOR #F3E5F5
+!define GAZEBO_COLOR #FFF3E0
+!define NODE_COLOR #FCE4EC
+!define MESH_COLOR #F1F8E9
+
+package "Launch Entry Point" LAUNCH_COLOR {
+    [joint_velocity_example_controller.launch.py] as launch
+}
+
+package "Configuration Parameters" CONFIG_COLOR {
+    [runtime_config_package] as rcp
+    [controllers_file] as cf
+    [description_package] as dp  
+    [description_file] as df
+}
+
+package "Main Configuration Files" CONFIG_COLOR {
+    [franka_gazebo/config/franka_controllers.yaml] as controllers_yaml
+    [Controller Definitions:\n- joint_state_broadcaster\n- joint_position_example_controller\n- controller_manager settings\n- hardware_interface configs] as controller_details
+}
+
+package "Robot Description Files" ROBOT_COLOR {
+    [franka_description/urdf/panda_arm.urdf.xacro] as main_urdf
+    [panda_common.xacro] as common
+    [panda.xacro] as panda
+    [hand.xacro] as hand
+    [utils.xacro] as utils
+    [materials.xacro] as materials
+}
+
+package "Mesh Files" MESH_COLOR {
+    [meshes/visual/*.dae] as visual_meshes
+    [meshes/collision/*.stl] as collision_meshes
+}
+
+package "Gazebo Integration" GAZEBO_COLOR {
+    [ros_gz_sim.launch.py] as gz_launch
+    [empty.sdf] as world_file
+    [gz_spawn_entity] as spawn_entity
+}
+
+package "ROS2 Nodes" NODE_COLOR {
+    [robot_state_publisher] as rsp
+    [controller_manager\n(ros2_control_node)] as cm
+    [joint_state_broadcaster\nspawner] as jsb
+    [joint_position_example_controller\nspawner] as jpec
+}
+
+package "Runtime Dependencies" {
+    [xacro executable] as xacro_exec
+    [controller_manager package] as cm_pkg
+    [robot_state_publisher package] as rsp_pkg
+    [ros_gz_sim package] as gz_pkg
+}
+
+' Main flow connections
+launch --> rcp : reads
+launch --> cf : reads  
+launch --> dp : reads
+launch --> df : reads
+
+rcp --> controllers_yaml : resolves to
+cf --> controllers_yaml : filename
+dp --> main_urdf : package path
+df --> main_urdf : filename
+
+' Robot description includes
+main_urdf --> common : includes
+main_urdf --> panda : includes
+main_urdf --> hand : includes
+main_urdf --> utils : includes
+main_urdf --> materials : includes
+main_urdf --> visual_meshes : references
+main_urdf --> collision_meshes : references
+
+' Controller configuration
+controllers_yaml --> controller_details : contains
+
+' Gazebo setup
+launch --> gz_launch : includes
+launch --> world_file : loads
+launch --> spawn_entity : creates
+
+' Node spawning  
+launch --> rsp : spawns
+launch --> cm : spawns
+launch --> jsb : spawns
+launch --> jpec : spawns
+
+' Runtime dependencies
+launch --> xacro_exec : uses
+rsp --> rsp_pkg : requires
+cm --> cm_pkg : requires
+gz_launch --> gz_pkg : requires
+
+' Data flow for robot description
+xacro_exec --> main_urdf : processes
+main_urdf --> rsp : robot_description param
+main_urdf --> cm : robot_description param
+controllers_yaml --> cm : controller config
+
+' Event handling connections
+cm --> jsb : OnProcessExit triggers
+cm --> jpec : OnProcessExit triggers
+
+@enduml

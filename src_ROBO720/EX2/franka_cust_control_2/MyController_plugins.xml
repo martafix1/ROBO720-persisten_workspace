@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<library path="libfranka_cust_control_2">
+  <class name="MyController_nameOfPlugin"
+   type="MyController_namespace::MyController_class"
+   base_class_type="controller_interface::ControllerInterface">
+    <description>
+      My custom Franka controller based on joint velocity example
+    </description>
+  </class>
+</library>

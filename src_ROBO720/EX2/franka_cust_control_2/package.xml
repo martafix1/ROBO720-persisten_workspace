@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>franka_cust_control_2</name>
+  <version>0.0.1</version>
+  <description>Custom Franka controllers package</description>
+  <maintainer email="your.email@example.com">Your Name</maintainer>
+  <license>MIT</license>
+
+  <!-- Build tool -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- C++ Dependencies for controller -->
+  <depend>controller_interface</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>pluginlib</depend>
+  <depend>eigen3_cmake_module</depend>
+
+  <!-- Launch and config dependencies -->
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>controller_manager</depend>
+  <depend>ros_gz_sim</depend>
+  
+  <!-- Dependencies for Franka -->
+  <depend>franka_description</depend>
+  <depend>franka_gazebo</depend>
+
+  <!-- CRITICAL: Add these missing dependencies -->
+  <depend>ros_gz_bridge</depend>
+  <depend>ign_ros2_control</depend>
+  
+  <!-- ROS2 Control -->
+  <depend>ros2_control</depend>
+  <depend>ros2_controllers</depend>
+
+  <!-- Test dependencies -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <controller_interface plugin="${prefix}/MyController_plugins.xml" />
+  </export>
+</package>
