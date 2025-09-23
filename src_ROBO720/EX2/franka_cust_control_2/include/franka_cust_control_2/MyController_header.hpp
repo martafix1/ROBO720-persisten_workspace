@@ -6,6 +6,8 @@
 #include <string>
 #include <controller_interface/controller_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <rclcpp/clock.hpp>
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -33,9 +35,15 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp::Duration elapsed_time_ = rclcpp::Duration(0, 0);
   
   // Add your custom controller variables here
-  // For example:
-  // std::vector<double> target_positions_;
-  // double custom_parameter_;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr req_velocity_subscriber_; //subscriber object
+  std::array<double, 7> requested_velocities_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // the req velocities themselves
+  std::array<bool, 7> requested_velocities_errState_ = {false,false,false,false,false,false,false,}; // the req velocities themselves
+  std::mutex velocity_command_mutex_; // mutex is apparently needed
+  float position_lim_MAX[7] = { 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973};
+  float position_lim_MIN[7] = {-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973};
+  // added for RLCPP throtle
+  rclcpp::Clock::SharedPtr node_clock_;
+
 };
 
 }  // namespace MyController_namespace

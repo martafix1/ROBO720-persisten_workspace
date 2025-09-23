@@ -68,15 +68,43 @@ controller_interface::return_type MyController_class::update(
     }
   }
 
-  // Example of how to read current joint states:
-  // for (int i = 0; i < num_joints; i++) {
-  //   double current_position = state_interfaces_[2*i].get_value();      // position
-  //   double current_velocity = state_interfaces_[2*i + 1].get_value();  // velocity
-  //   
-  //   // Use these values in your control algorithm
-  //   RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+  // this uses the requested_velocities
+  std::array<double, 7> velocities;
+  {
+    std::lock_guard<std::mutex> lock(velocity_command_mutex_);
+    velocities = requested_velocities_;
+  }
+
+
+
+  //Example of how to read current joint states:
+  for (int i = 0; i < num_joints; i++) {
+    double current_position = state_interfaces_[2*i].get_value();      // position
+    double current_velocity = state_interfaces_[2*i + 1].get_value();  // velocity
+    
+
+    rclcpp::Duration printPeriod_s(5.0, 0.0);  
+    if(std::fmod(elapsed_time_.seconds(), time_max.seconds())<0.001){
+      if(i==0){
+        RCLCPP_INFO(get_node()->get_logger(), "\033[35m Time: \033[0m %.3f [s]",elapsed_time_.seconds());
+      }
+      RCLCPP_INFO(get_node()->get_logger(), "\033[35m Joint \033[0m %d: pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
+    }
+  
+    for (size_t i = 0; i < num_joints; ++i) {
+      command_interfaces_[i].set_value(velocities[i]);
+    }
+
+
+
+
+
+      //  // Does not work coz sim is using system time not /clock topic
+  //   RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *node_clock_, 200,
   //                        "Joint %d: pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
-  // }
+    
+  }
+
 
   return controller_interface::return_type::OK;
 }
@@ -85,7 +113,7 @@ CallbackReturn MyController_class::on_init() {
   try {
     auto_declare<bool>("gazebo", false);
     auto_declare<std::string>("robot_description", "");
-    
+    get_node()->set_parameter(rclcpp::Parameter("use_sim_time", true));
     // Declare your custom parameters here
     // auto_declare<double>("my_custom_parameter", 1.0);
   } catch (const std::exception& e) {
@@ -99,8 +127,27 @@ CallbackReturn MyController_class::on_configure(
     const rclcpp_lifecycle::State& /*previous_state*/) {
   is_gazebo = get_node()->get_parameter("gazebo").as_bool();
 
+
+  node_clock_ = get_node()->get_clock();
+  RCLCPP_INFO(get_node()->get_logger(), "\033[35m Clock type: \033[0m %d", node_clock_->get_clock_type());
+
   // Get your custom parameters here
   // custom_parameter_ = get_node()->get_parameter("my_custom_parameter").as_double();
+
+  // reqested velocity subscriber
+  auto node = get_node();  // Shortcut
+  req_velocity_subscriber_ = node->create_subscription<std_msgs::msg::Float64MultiArray>(
+      "/requested_velocities_CMD_INTERFACE",
+      10,
+      [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
+        if (msg->data.size() != 7) {
+          RCLCPP_WARN(this->get_node()->get_logger(), "Received velocity command with wrong size: %zu", msg->data.size());
+          return;
+        }
+        std::lock_guard<std::mutex> lock(velocity_command_mutex_);
+        std::copy_n(msg->data.begin(), 7, requested_velocities_.begin());
+      } // unlocks when it leaves this scope
+  );
 
   auto parameters_client =
       std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "/robot_state_publisher");
