@@ -69,10 +69,10 @@ controller_interface::return_type MyController_class::update(
  
 
   // this uses the requested_velocities
-  std::array<double, 7> velocities;
+  std::array<double, 7> angles;
   {
-    std::lock_guard<std::mutex> lock(velocity_command_mutex_);
-    velocities = requested_velocities_;
+    std::lock_guard<std::mutex> lock(angle_command_mutex_);
+    angles = requested_angles_;
   }
 
    // Example: Move only joints 4 and 5 (indices 3 and 4)
@@ -87,15 +87,9 @@ controller_interface::return_type MyController_class::update(
   //   }
   // }
 
-  
-  for(int i = 0; i < num_joints;++i){
-    
 
 
-  }
-
-
-
+   std::array<double, 7> velocities;
  
 
   //Example of how to read current joint states:
@@ -103,38 +97,43 @@ controller_interface::return_type MyController_class::update(
     double current_position = state_interfaces_[2*i].get_value();      // position
     double current_velocity = state_interfaces_[2*i + 1].get_value();  // velocity
     
-    float desired = (float) -position_centers[i] +((myWave * (float) position_ranges[i])/2)*0.7;
-
+    //float desired = (float) -position_centers[i] +((myWave * (float) position_ranges[i])/2)*0.7;
+    float desired = angles[i];
      
 
-    float K = 300  * period.seconds() ;
+    float K = 10 * 1000  * period.seconds() ;
     float K_i = 0;
     // // do waving with PI controll
     float e = desired - current_position;
     float x = K*(e + PIreg_I[i]);
     PIreg_I[i] += e*K_i;
     
-    rclcpp::Duration printPeriod2_s(0.3, 0.0); 
-    if(std::fmod(elapsed_time_.seconds()*100, printPeriod2_s.seconds()*100)<period.seconds()*10){
-      if(i==0){
-        RCLCPP_INFO(get_node()->get_logger(), "\033[35m REG: \033[0m d = %5.3f, e = %5.3f, x = %5.3f   ",desired,e,x);
-      }
-    } 
-    
-    
+    // saturate at 2
+    x = std::min(std::max(-2.0f,x),2.0f);
+
+    velocities[i] = x;
+
+    if(i == 2){
+      rclcpp::Clock system_clock(RCL_SYSTEM_TIME);
+
+      RCLCPP_INFO_THROTTLE(    get_node()->get_logger(),
+      system_clock,    100,      "\033[35m REG:\033[0m(%d) d = %5.3f, e = %5.3f, x = %5.3f   ",i,desired,e,x);
+
+    }
+
       
 
 
 
-    velocities[i] = x;
 
-    rclcpp::Duration printPeriod_s(5.0, 0.0);  
-    if(std::fmod(elapsed_time_.seconds(), printPeriod_s.seconds())<period.seconds()){
-      if(i==0){
-        RCLCPP_INFO(get_node()->get_logger(), "\033[35m Time: \033[0m %.3f [s]",elapsed_time_.seconds());
-      }
-      RCLCPP_INFO(get_node()->get_logger(), "\033[35m Joint \033[0m %d: pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
-    }
+
+    // rclcpp::Duration printPeriod_s(5.0, 0.0);  
+    // if(std::fmod(elapsed_time_.seconds(), printPeriod_s.seconds())<period.seconds()){
+    //   if(i==0){
+    //     RCLCPP_INFO(get_node()->get_logger(), "\033[35m Time: \033[0m %.3f [s]",elapsed_time_.seconds());
+    //   }
+    //   RCLCPP_INFO(get_node()->get_logger(), "\033[35m Joint \033[0m %d: pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
+    // }
     
     
 
@@ -196,18 +195,18 @@ CallbackReturn MyController_class::on_configure(
   // Get your custom parameters here
   // custom_parameter_ = get_node()->get_parameter("my_custom_parameter").as_double();
 
-  // reqested velocity subscriber
+  // reqested angle subscriber
   auto node = get_node();  // Shortcut
-  req_velocity_subscriber_ = node->create_subscription<std_msgs::msg::Float64MultiArray>(
-      "/requested_velocities_CMD_INTERFACE",
+  req_angle_subscriber_ = node->create_subscription<std_msgs::msg::Float64MultiArray>(
+      "/requested_angles_CMD_INTERFACE",
       10,
       [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
         if (msg->data.size() != 7) {
-          RCLCPP_WARN(this->get_node()->get_logger(), "Received velocity command with wrong size: %zu", msg->data.size());
+          RCLCPP_WARN(this->get_node()->get_logger(), "Received angle command with wrong size: %zu", msg->data.size());
           return;
         }
-        std::lock_guard<std::mutex> lock(velocity_command_mutex_);
-        std::copy_n(msg->data.begin(), 7, requested_velocities_.begin());
+        std::lock_guard<std::mutex> lock(angle_command_mutex_);
+        std::copy_n(msg->data.begin(), 7, requested_angles_.begin());
       } // unlocks when it leaves this scope
   );
 

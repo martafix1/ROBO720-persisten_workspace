@@ -36,10 +36,10 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp::Duration elapsed_time_ = rclcpp::Duration(0, 0);
   
   // Add your custom controller variables here
-  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr req_velocity_subscriber_; //subscriber object
-  std::array<double, 7> requested_velocities_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // the req velocities themselves
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr req_angle_subscriber_; //subscriber object
+  std::array<double, 7> requested_angles_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // the req velocities themselves
   std::array<bool, 7> requested_velocities_errState_ = {false,false,false,false,false,false,false,}; // the req velocities themselves
-  std::mutex velocity_command_mutex_; // mutex is apparently needed
+  std::mutex angle_command_mutex_; // mutex is apparently needed
   float position_lim_MAX[7] = { 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973};
   float position_lim_MIN[7] = {-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973};
   float position_centers[7] = {0};
