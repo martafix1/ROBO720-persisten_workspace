@@ -40,6 +40,15 @@ MyController_class::state_interface_configuration() const {
   return config;
 }
 
+MyController_class::MyController_class(){
+   for (int i = 0; i < num_joints; ++i) {
+    position_centers[i] = (position_lim_MAX[i] + position_lim_MIN[i]) / 2.0f;
+    position_ranges[i] = position_lim_MAX[i] - position_lim_MIN[i];
+  }
+
+}
+
+
 controller_interface::return_type MyController_class::update(
     const rclcpp::Time& /*time*/,
     const rclcpp::Duration& period) {
@@ -56,17 +65,8 @@ controller_interface::return_type MyController_class::update(
   double omega = cycle * omega_max / 2.0 *
                  (1.0 - std::cos(2.0 * M_PI / time_max.seconds() * elapsed_time_.seconds()));
 
-  // Example: Move only joints 4 and 5 (indices 3 and 4)
-  for (int i = 0; i < num_joints; i++) {
-    if(i==0){
-      command_interfaces_[i].set_value(omega*8);
-    } 
-    else if (i == 3 || i == 4) {
-      command_interfaces_[i].set_value(omega);
-    } else {
-      command_interfaces_[i].set_value(0.0);
-    }
-  }
+  double myWave = std::sin(2.0 * M_PI / time_max.seconds() * elapsed_time_.seconds());
+ 
 
   // this uses the requested_velocities
   std::array<double, 7> velocities;
@@ -75,36 +75,98 @@ controller_interface::return_type MyController_class::update(
     velocities = requested_velocities_;
   }
 
+   // Example: Move only joints 4 and 5 (indices 3 and 4)
+  // for (int i = 0; i < num_joints; i++) {
+  //   if(i==0){
+  //     velocities[i]  = (omega*8);
+  //   } 
+  //   else if (i == 3 || i == 4) {
+  //   velocities[i]   = (omega);
+  //   } else {
+  //   velocities[i]    = (0.0);
+  //   }
+  // }
 
+  
+  for(int i = 0; i < num_joints;++i){
+    
+
+
+  }
+
+
+
+ 
 
   //Example of how to read current joint states:
   for (int i = 0; i < num_joints; i++) {
     double current_position = state_interfaces_[2*i].get_value();      // position
     double current_velocity = state_interfaces_[2*i + 1].get_value();  // velocity
     
+    float desired = (float) -position_centers[i] +((myWave * (float) position_ranges[i])/2)*0.7;
+
+     
+
+    float K = 300  * period.seconds() ;
+    float K_i = 0;
+    // // do waving with PI controll
+    float e = desired - current_position;
+    float x = K*(e + PIreg_I[i]);
+    PIreg_I[i] += e*K_i;
+    
+    rclcpp::Duration printPeriod2_s(0.3, 0.0); 
+    if(std::fmod(elapsed_time_.seconds()*100, printPeriod2_s.seconds()*100)<period.seconds()*10){
+      if(i==0){
+        RCLCPP_INFO(get_node()->get_logger(), "\033[35m REG: \033[0m d = %5.3f, e = %5.3f, x = %5.3f   ",desired,e,x);
+      }
+    } 
+    
+    
+      
+
+
+
+    velocities[i] = x;
 
     rclcpp::Duration printPeriod_s(5.0, 0.0);  
-    if(std::fmod(elapsed_time_.seconds(), time_max.seconds())<0.001){
+    if(std::fmod(elapsed_time_.seconds(), printPeriod_s.seconds())<period.seconds()){
       if(i==0){
         RCLCPP_INFO(get_node()->get_logger(), "\033[35m Time: \033[0m %.3f [s]",elapsed_time_.seconds());
       }
       RCLCPP_INFO(get_node()->get_logger(), "\033[35m Joint \033[0m %d: pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
     }
-  
-    for (size_t i = 0; i < num_joints; ++i) {
-      command_interfaces_[i].set_value(velocities[i]);
+    
+    
+
+    //check if the req velocities would result in colision. If yes, set an error state to true, and if it was false before alert of it to console.
+    float next_position = velocities[i]*period.seconds() + current_position;
+
+    if(position_lim_MIN[i] > next_position || next_position > position_lim_MAX[i]) {
+      //invalid position to come
+      if(requested_velocities_errState_[i] == false){
+        requested_velocities_errState_[i] = true;
+        RCLCPP_INFO(get_node()->get_logger(), "\033[33m Invalid req. velocity on joint \033[0m %d \033[33m, collision iminent. p=\033[0m%.2f \033[33m v_req=\033[0m%.2f  ", i,current_position, velocities[i]);
+      }
+      velocities[i] = 0.0;
+
+    }else{
+      if(requested_velocities_errState_[i]  == true){
+        requested_velocities_errState_[i] = false;
+      }
+
     }
-
-
 
 
 
       //  // Does not work coz sim is using system time not /clock topic
   //   RCLCPP_INFO_THROTTLE(get_node()->get_logger(), *node_clock_, 200,
-  //                        "Joint %d: pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
+  //                        "Joint %d (+1): pos=%.3f, vel=%.3f", i+1, current_position, current_velocity);
     
   }
 
+  for (int i = 0; i < num_joints; ++i) {
+    command_interfaces_[i].set_value(velocities[i]);
+  }
 
   return controller_interface::return_type::OK;
 }

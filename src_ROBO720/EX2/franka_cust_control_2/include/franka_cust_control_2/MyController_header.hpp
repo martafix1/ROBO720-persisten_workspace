@@ -18,6 +18,7 @@ namespace MyController_namespace {
  */
 class MyController_class : public controller_interface::ControllerInterface {
  public:
+    MyController_class();
   [[nodiscard]] controller_interface::InterfaceConfiguration command_interface_configuration()
       const override;
   [[nodiscard]] controller_interface::InterfaceConfiguration state_interface_configuration()
@@ -41,6 +42,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::mutex velocity_command_mutex_; // mutex is apparently needed
   float position_lim_MAX[7] = { 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973};
   float position_lim_MIN[7] = {-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973};
+  float position_centers[7] = {0};
+  float position_ranges[7] = {0};
+  float PIreg_I[7] = {0};
   // added for RLCPP throtle
   rclcpp::Clock::SharedPtr node_clock_;
 
