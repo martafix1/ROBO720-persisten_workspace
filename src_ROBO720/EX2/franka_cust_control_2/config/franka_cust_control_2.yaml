@@ -8,17 +8,18 @@ controller_manager:
 
     # Your custom controller - this references your C++ plugin
     controller_v1:
-     type: "MyController_nameOfPlugin"
+      type: MyController_nameOfPlugin
 
 
 # Configuration for your custom C++ controller
-# controller_v1:
-  # ros__parameters:
-  #   # Add any parameters your controller needs
-  #   # These will be available in your on_configure() method
-  #   my_custom_parameter: 1.0
-  #   another_parameter: "example"
-  #type: franka_cust_control_2/MyController_nameOfPlugin
+controller_v1:
+  ros__parameters:
+    # # Add any parameters your controller needs
+    # # These will be available in your on_configure() method
+    # my_custom_parameter: 1.0
+    # another_parameter: "example"
+    gazebo: true
+  # type: franka_cust_control_2/MyController_nameOfPlugin
 
 # Joint state broadcaster configuration (keep as is)
 joint_state_broadcaster:

@@ -69,7 +69,8 @@ def launch_setup(context, *args, **kwargs):
     my_custom_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["controller_v1", "--controller-manager", "/controller_manager", "-t", "MyController_nameOfPlugin" ],
+        arguments=["controller_v1", "--controller-manager", "/controller_manager", "-t", "MyController_nameOfPlugin" ],  # does work
+        # arguments=["controller_v1", "--controller-manager", "/controller_manager" ], # does not work :(
     )
 
     # Same Gazebo setup as original
@@ -130,6 +131,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "controllers_file",
             default_value="franka_cust_control_2.yaml",  # Changed to your config file
+            # default_value="franka_cust_contro.yaml",  # Crippled for testing
             description="YAML file with the controllers configuration.",
         ),
         DeclareLaunchArgument(
