@@ -14,6 +14,10 @@ find_package(pluginlib REQUIRED)
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+find_package(urdf REQUIRED)
+find_package(kdl_parser REQUIRED)
+
+
 # Add your controller library
 add_library(${PROJECT_NAME} SHARED
   src/MyController_cppFile.cpp
@@ -33,6 +37,8 @@ ament_target_dependencies(${PROJECT_NAME}
   rclcpp_lifecycle
   pluginlib
   Eigen3
+  urdf
+  kdl_parser
 )
 
 # Export the plugin

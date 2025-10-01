@@ -47,6 +47,14 @@ MyController_class::MyController_class(){
     position_centers[i] = (position_lim_MAX[i] + position_lim_MIN[i]) / 2.0f;
     position_ranges[i] = position_lim_MAX[i] - position_lim_MIN[i];
   }
+  joint_names_ = {
+    "panda_joint1","panda_joint2","panda_joint3","panda_joint4","panda_joint5","panda_joint6","panda_joint7",
+  };
+   tip_name= "panda_link7";
+   root_name= "base";
+
+   std::cout << "\033[35m ItDidWork: \033[0m constructor" << std::endl;
+
 
 }
 
@@ -83,11 +91,36 @@ controller_interface::return_type MyController_class::update(
   std::array<double, 7> torqe_command;
  
   updateJointStates();
+  
+  //switcheroo as they cannot be assigned. 
+  for (int i = 0; i < num_joints; i++)
+  {
+      q_(i) = position_interface_values_(i);
+      qdot_(i) = velocity_interface_values_(i);
+  }
+
+  
+    // Compute model(M,C,G) 
+  id_solver_->JntToMass(q_, M_);
+  id_solver_->JntToCoriolis(q_, qdot_, C_);
+  id_solver_->JntToGravity(q_, G_); 
+
+
+    //switch from kdl JntArray to eigen for matrix operations
+  Eigen::VectorXd qdot_eigen = qdot_.data;
+
+  
+   tau_d_.data = (G_.data*1.5) ;//- qdot_.data;
+  //Eigen::VectorXd tau = G_.data - qdot_.data;
+  
 
   for(int i =0; i <num_joints; ++i){
-    torqe_command[i] = -velocity_interface_values_[i] *2;
+    torqe_command[i] =  tau_d_(i); //not needed rn likely
+    //torqe_command[i] =  tau(i); //not needed rn likely
+    
   }
   
+  //RCLCPP_INFO(get_node()->get_logger(), "\033[35m ItDidWork: \033[0m %d", 4);
   
 
   for (int i = 0; i < num_joints; ++i) {
@@ -147,7 +180,143 @@ CallbackReturn MyController_class::on_configure(
     robot_description_ = result[0].value_to_string();
   } else {
     RCLCPP_ERROR(get_node()->get_logger(), "Failed to get robot_description parameter.");
+    return CallbackReturn::FAILURE;
   }
+
+   // Get the joint names from the parameter server
+  // joint_names_ = auto_declare<std::vector<std::string>>("joints", joint_names_); //this shit needs working yaml, but there is enough hard coded shit anyway so why do it this way
+  if (joint_names_.empty()) {
+    RCLCPP_FATAL(get_node()->get_logger(), "joint_names_ not set");
+    return CallbackReturn::FAILURE;
+  }
+  // Check if there are the correct number of joint names
+  if (joint_names_.size() != static_cast<uint>(num_joints)) {
+    RCLCPP_FATAL(get_node()->get_logger(), "joint_names_ should be of size %d but is of size %ld",
+                 num_joints, joint_names_.size());
+    return CallbackReturn::FAILURE;
+  }
+  // Get the URDF model and the joint URDF objects
+  urdf::Model urdf;
+  if (!urdf.initString(robot_description_))
+  {
+      RCLCPP_ERROR(get_node()->get_logger(), "Failed to parse urdf file");
+      return CallbackReturn::ERROR;
+  }
+  else
+  {
+      RCLCPP_INFO(get_node()->get_logger(), "Found robot_description");
+  }
+
+  // Get the joint URDF objects
+  for (int i = 0; i < num_joints; i++)
+  {
+    urdf::JointConstSharedPtr joint_urdf = urdf.getJoint(joint_names_[i]);
+    if (!joint_urdf)
+    {
+        RCLCPP_ERROR(get_node()->get_logger(), "Could not find joint '%s' in urdf", joint_names_[i].c_str());
+        return CallbackReturn::ERROR;
+    }
+    joint_urdfs_.push_back(joint_urdf);
+  }
+
+  // Get the KDL tree from the robot description
+  if (!kdl_parser::treeFromUrdfModel(urdf, kdl_tree_))
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "Failed to construct kdl tree");
+    return CallbackReturn::ERROR;
+  }
+  else
+  {
+    RCLCPP_INFO(get_node()->get_logger(), "Constructed kdl tree");
+  }
+
+  // Get the root and tip link names from the parameter server
+  // If the parameter is not found, return an error
+  
+  //  std::string root_name, tip_name; // more yaml parameters begone 
+  // if (get_node()->has_parameter("root_link"))
+  // {
+  //   root_name = get_node()->get_parameter("root_link").as_string();
+  //   RCLCPP_INFO(get_node()->get_logger(), "Found root link name form yaml: %s", root_name.c_str());
+  // }
+  // else
+  // {
+  //   RCLCPP_ERROR(get_node()->get_logger(), "Could not find root link name");
+  //   return CallbackReturn::ERROR;
+  // }
+  // if (get_node()->has_parameter("tip_link"))
+  // {
+  //   tip_name = get_node()->get_parameter("tip_link").as_string();
+  //   RCLCPP_INFO(get_node()->get_logger(), "Found tip link name form yaml: %s", tip_name.c_str());
+  // }
+  // else
+  // {
+  //   RCLCPP_ERROR(get_node()->get_logger(), "Could not find tip link name");
+  //   return CallbackReturn::ERROR;
+  // }
+
+  // Get the KDL chain from the KDL tree
+  // if kdl tree has no chain from root to tip, return error
+  if (!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Failed to get KDL chain from tree: ");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  " << root_name << " --> " << tip_name);
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  Tree has " << kdl_tree_.getNrOfJoints() << " joints");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  Tree has " << kdl_tree_.getNrOfSegments() << " segments");
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  The segments are:");
+
+    KDL::SegmentMap segment_map = kdl_tree_.getSegments();
+    KDL::SegmentMap::iterator it;
+
+    for (it = segment_map.begin(); it != segment_map.end(); it++)
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "    %s", std::string((*it).first).c_str());
+    }
+
+    return CallbackReturn::ERROR;
+  }
+  else
+  {
+    RCLCPP_INFO(get_node()->get_logger(), "Got kdl chain");
+
+    // debug: print kdl tree and kdl chain
+    RCLCPP_INFO(get_node()->get_logger(), "  %s --> %s", root_name.c_str(), tip_name.c_str());
+    RCLCPP_INFO(get_node()->get_logger(), "  Tree has %d joints", kdl_tree_.getNrOfJoints());
+    RCLCPP_INFO(get_node()->get_logger(), "  Tree has %d segments", kdl_tree_.getNrOfSegments());
+    RCLCPP_INFO(get_node()->get_logger(), "  The kdl_tree_ segments are:");
+
+    // Print the segments of the KDL tree
+    KDL::SegmentMap segment_map = kdl_tree_.getSegments();
+    KDL::SegmentMap::iterator it;
+    for (it = segment_map.begin(); it != segment_map.end(); it++)
+    {
+      RCLCPP_INFO(get_node()->get_logger(), "    %s", std::string((*it).first).c_str());
+    }
+    RCLCPP_INFO(get_node()->get_logger(), "  Chain has %d joints", kdl_chain_.getNrOfJoints());
+    RCLCPP_INFO(get_node()->get_logger(), "  Chain has %d segments", kdl_chain_.getNrOfSegments());
+    RCLCPP_INFO(get_node()->get_logger(), "  The kdl_chain_ segments are:");
+    for (unsigned int i = 0; i < kdl_chain_.getNrOfSegments(); i++) {
+        const KDL::Segment& segment = kdl_chain_.getSegment(i);
+        RCLCPP_INFO(get_node()->get_logger(), "    %s", segment.getName().c_str());
+    }
+  }
+
+  // Create the KDL chain dyn param solver
+  id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
+
+  M_.resize(kdl_chain_.getNrOfJoints());
+  C_.resize(kdl_chain_.getNrOfJoints());
+  G_.resize(kdl_chain_.getNrOfJoints());
+
+  // print kdltree, kdlchain, jointnames, jointurdfs for learning purposes
+  fprintf(stderr, "Number of segments in kdl_tree_: %d\n", kdl_tree_.getNrOfSegments());
+  fprintf(stderr, "Number of joints in kdl_chain_: %d\n", kdl_chain_.getNrOfJoints());
+  fprintf(stderr, "Joint names in joint_names_: ");
+  for (int i = 0; i < num_joints; i++)
+  {
+    fprintf(stderr, "%s ", joint_names_[i].c_str());
+  }
+  fprintf(stderr, "\n");
 
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class configured successfully!");
   return CallbackReturn::SUCCESS;
@@ -156,6 +325,46 @@ CallbackReturn MyController_class::on_configure(
 CallbackReturn MyController_class::on_activate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
   elapsed_time_ = rclcpp::Duration(0, 0);
+
+
+// Initialize the joint states
+  updateJointStates();
+
+  // Initialize the KDL variables
+  M_.data.setZero();
+  C_.data.setZero();
+  G_.data.setZero();
+
+  // t = 0.0;  // Initialize the simulation time variable
+
+  // // Initialize the variables
+  // qd_.resize(num_joints);
+  // qd_dot_.resize(num_joints);
+  // qd_ddot_.resize(num_joints);
+   q_.resize(num_joints);
+   qdot_.resize(num_joints);
+  // e_.resize(num_joints);
+  // e_dot_.resize(num_joints);
+  // e_int_.resize(num_joints);
+
+  // aux_d_.resize(num_joints);
+  // comp_d_.resize(num_joints);
+   tau_d_.resize(num_joints);
+
+  // Kp_.resize(num_joints);
+  // Ki_.resize(num_joints);
+  // Kd_.resize(num_joints);
+
+  // for (int i = 0; i < SaveDataMax; i++) {
+  //   SaveData_[i] = 0.0;
+  // }
+
+  // // Activate the publishers
+  // pub_qd_->on_activate();
+  // pub_q_->on_activate();
+  // pub_e_->on_activate();
+  // pub_SaveData_->on_activate();
+
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
   return CallbackReturn::SUCCESS;
 }

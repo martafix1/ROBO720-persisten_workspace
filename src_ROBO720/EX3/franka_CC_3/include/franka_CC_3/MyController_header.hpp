@@ -11,6 +11,22 @@
 
 #include <Eigen/Eigen>
 
+// URDF model parsing
+#include <urdf/model.h>
+
+// KDL libraries
+#include <kdl/kdl.hpp>
+#include <kdl/tree.hpp>
+#include <kdl/chain.hpp>
+#include <kdl/chaindynparam.hpp>
+#include <kdl_parser/kdl_parser.hpp>
+
+// Memory management (use standard C++ smart pointers)
+#include <memory>
+
+
+
+
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
 namespace MyController_namespace {
@@ -41,6 +57,39 @@ class MyController_class : public controller_interface::ControllerInterface {
   Vector7d position_interface_values_;
   Vector7d velocity_interface_values_;
   
+  // KDL
+  KDL::Tree kdl_tree_;
+  KDL::Chain kdl_chain_;
+
+  // kdl variables
+  KDL::JntSpaceInertiaMatrix M_; // inertia matrix
+  KDL::JntArray C_; // coriolis and centrifugal forces
+  KDL::JntArray G_; // gravity forces
+  KDL::Vector gravity_;
+
+  // kdl solver (solver to compute the inverse dynamics)
+  std::unique_ptr<KDL::ChainDynParam> id_solver_;
+
+  //Joint space state
+  KDL::JntArray qd_, qd_dot_, qd_ddot_;
+  KDL::JntArray q_, qdot_;
+  KDL::JntArray e_, e_dot_, e_int_;
+
+  // input
+  KDL::JntArray aux_d_;
+  KDL::JntArray comp_d_;
+  KDL::JntArray tau_d_;
+    
+  // gains
+  KDL::JntArray Kp_, Ki_, Kd_;
+
+  // joint handles for URDF
+  std::vector<std::string> joint_names_;  // joint names
+  std::string root_name, tip_name;  //this coz why not hardcode it
+  // std::vector<hardware_interface::JointHandle> joints_;  // joint handles
+  std::vector<urdf::JointConstSharedPtr> joint_urdfs_;  // joint urdfs
+
+
   // Add your custom controller variables here
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr req_angle_subscriber_; //subscriber object
   std::array<double, 7> requested_angles_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // the req velocities themselves
