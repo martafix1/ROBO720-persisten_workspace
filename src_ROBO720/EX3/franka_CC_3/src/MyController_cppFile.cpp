@@ -80,11 +80,11 @@ controller_interface::return_type MyController_class::update(
  
 
   // this uses the requested_velocities
-  std::array<double, 7> angles;
-  {
-    std::lock_guard<std::mutex> lock(angle_command_mutex_);
-    angles = requested_angles_;
-  }
+
+  // {
+  //   std::lock_guard<std::mutex> lock(angle_command_mutex_);
+  //   angles = requested_angles_;
+  // }
 
 
 
@@ -99,7 +99,16 @@ controller_interface::return_type MyController_class::update(
       q_(i) = position_interface_values_(i);
       qdot_(i) = velocity_interface_values_(i);
       exertedEffort_(i) = effort_interface_values_(i);
+
+      qd_(i) = req_pos[i];
+      qd_dot_(i) = req_vel[i];
+      qd_ddot_(i) = req_acc[i];
   }
+
+
+  e_.data = qd_.data - q_.data;
+  e_dot_.data = qd_dot_.data - qdot_.data;
+  // e_int_.data = qd_.data - q_.data; //wtf is dis for
 
   
     // Compute model(M,C,G) 
@@ -109,10 +118,16 @@ controller_interface::return_type MyController_class::update(
 
 
     //switch from kdl JntArray to eigen for matrix operations
-  Eigen::VectorXd qdot_eigen = qdot_.data;
+  //Eigen::VectorXd qdot_eigen = qdot_.data;
+
+  aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+  comp_d_.data = C_.data + G_.data;
+  tau_d_.data = aux_d_.data + comp_d_.data;
+
+
 
   
-   tau_d_.data = (G_.data) - qdot_.data * 0.5;
+  // tau_d_.data = (G_.data) - qdot_.data * 0.5;
   //Eigen::VectorXd tau = G_.data - qdot_.data;
   
 
@@ -194,18 +209,23 @@ CallbackReturn MyController_class::on_configure(
 
   // reqested angle subscriber
   auto node = get_node();  // Shortcut
-  req_angle_subscriber_ = node->create_subscription<std_msgs::msg::Float64MultiArray>(
-      "/requested_angles_CMD_INTERFACE",
-      10,
-      [this](const std_msgs::msg::Float64MultiArray::SharedPtr msg) {
-        if (msg->data.size() != 7) {
-          RCLCPP_WARN(this->get_node()->get_logger(), "Received angle command with wrong size: %zu", msg->data.size());
-          return;
-        }
-        std::lock_guard<std::mutex> lock(angle_command_mutex_);
-        std::copy_n(msg->data.begin(), 7, requested_angles_.begin());
-      } // unlocks when it leaves this scope
-  );
+req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::JointTrajectoryPoint>(
+    "/requested_traj_point",
+    10,
+    [this](const trajectory_msgs::msg::JointTrajectoryPoint::SharedPtr msg) {
+      if (msg->positions.size() != num_joints ||
+          msg->velocities.size() != num_joints ||
+          msg->accelerations.size() != num_joints) {
+        RCLCPP_WARN(get_node()->get_logger(), "Received trajectory point with wrong sizes");
+        return;
+      }
+
+      std::lock_guard<std::mutex> lock(req_traj_point_mutex_);
+      std::copy_n(msg->positions.begin(), num_joints, req_pos.begin());
+      std::copy_n(msg->velocities.begin(), num_joints, req_vel.begin());
+      std::copy_n(msg->accelerations.begin(), num_joints, req_acc.begin());
+    }
+);
 
   auto parameters_client =
       std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "/robot_state_publisher");
@@ -380,25 +400,29 @@ CallbackReturn MyController_class::on_activate(
 
   // t = 0.0;  // Initialize the simulation time variable
 
-  // // Initialize the variables
-  // qd_.resize(num_joints);
-  // qd_dot_.resize(num_joints);
-  // qd_ddot_.resize(num_joints);
+  // Initialize the variables
+  qd_.resize(num_joints);
+  qd_dot_.resize(num_joints);
+  qd_ddot_.resize(num_joints);
    q_.resize(num_joints);
    qdot_.resize(num_joints);
-  // e_.resize(num_joints);
-  // e_dot_.resize(num_joints);
-  // e_int_.resize(num_joints);
+  e_.resize(num_joints);
+  e_dot_.resize(num_joints);
+  e_int_.resize(num_joints);
 
-  // aux_d_.resize(num_joints);
-  // comp_d_.resize(num_joints);
+  aux_d_.resize(num_joints);
+  comp_d_.resize(num_joints);
    tau_d_.resize(num_joints);
     
   exertedEffort_.resize(num_joints);
 
-  // Kp_.resize(num_joints);
-  // Ki_.resize(num_joints);
-  // Kd_.resize(num_joints);
+  Kp_.resize(num_joints);
+  Ki_.resize(num_joints);
+  Kd_.resize(num_joints);
+
+  Kp_.data.setConstant(1);
+  Ki_.data.setConstant(0);
+  Kd_.data.setConstant(1);
 
   // for (int i = 0; i < SaveDataMax; i++) {
   //   SaveData_[i] = 0.0;

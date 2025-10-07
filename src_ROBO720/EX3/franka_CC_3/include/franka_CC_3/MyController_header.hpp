@@ -21,6 +21,9 @@
 #include <kdl/chaindynparam.hpp>
 #include <kdl_parser/kdl_parser.hpp>
 
+// Trajectory point
+#include "trajectory_msgs/msg/joint_trajectory_point.hpp"
+
 // Memory management (use standard C++ smart pointers)
 #include <memory>
 
@@ -108,10 +111,12 @@ class MyController_class : public controller_interface::ControllerInterface {
 
 
   // Add your custom controller variables here
-  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr req_angle_subscriber_; //subscriber object
-  std::array<double, 7> requested_angles_ = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}; // the req velocities themselves
+  rclcpp::Subscription<trajectory_msgs::msg::JointTrajectoryPoint>::SharedPtr req_traj_point_subscriber_; //subscriber object
+  std::array<double, 7> req_pos = {0.0};
+  std::array<double, 7> req_vel = {0.0};
+  std::array<double, 7> req_acc = {0.0};
   std::array<bool, 7> requested_velocities_errState_ = {false,false,false,false,false,false,false,}; // the req velocities themselves
-  std::mutex angle_command_mutex_; // mutex is apparently needed
+  std::mutex req_traj_point_mutex_; // mutex is apparently needed
   float position_lim_MAX[7] = { 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973};
   float position_lim_MIN[7] = {-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973};
   float position_centers[7] = {0};
