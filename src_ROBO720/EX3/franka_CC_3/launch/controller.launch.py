@@ -141,7 +141,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "description_file",
-            default_value="panda_arm.urdf.xacro",  # Keep original robot description
+            default_value="effort_panda_arm.urdf.xacro",  # Keep original robot description
             description="URDF/XACRO description file with the robot.",
         ),
         DeclareLaunchArgument(

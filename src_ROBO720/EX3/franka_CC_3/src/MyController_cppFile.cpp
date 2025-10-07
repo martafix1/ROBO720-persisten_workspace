@@ -21,10 +21,10 @@ MyController_class::command_interface_configuration() const {
   config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
 
   for (int i = 1; i <= num_joints; ++i) {
-  config.names.push_back("panda_joint" + std::to_string(i) + "/velocity");
+    //config.names.push_back("panda_joint" + std::to_string(i) + "/velocity");
     // You can also use position or effort interfaces:
     // config.names.push_back("panda_joint" + std::to_string(i) + "/position");
-     //config.names.push_back("panda_joint" + std::to_string(i) + "/effort");
+     config.names.push_back("panda_joint" + std::to_string(i) + "/effort");
   }
 
 
@@ -110,7 +110,7 @@ controller_interface::return_type MyController_class::update(
   Eigen::VectorXd qdot_eigen = qdot_.data;
 
   
-   tau_d_.data = (G_.data*1.5) ;//- qdot_.data;
+   tau_d_.data = (G_.data) ;//- qdot_.data;
   //Eigen::VectorXd tau = G_.data - qdot_.data;
   
 
