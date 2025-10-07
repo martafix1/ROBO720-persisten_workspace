@@ -38,6 +38,7 @@ MyController_class::state_interface_configuration() const {
   for (int i = 1; i <= num_joints; ++i) {
     config.names.push_back("panda_joint" + std::to_string(i) + "/position");
     config.names.push_back("panda_joint" + std::to_string(i) + "/velocity");
+    config.names.push_back("panda_joint" + std::to_string(i) + "/effort");
   }
   return config;
 }
@@ -97,6 +98,7 @@ controller_interface::return_type MyController_class::update(
   {
       q_(i) = position_interface_values_(i);
       qdot_(i) = velocity_interface_values_(i);
+      exertedEffort_(i) = effort_interface_values_(i);
   }
 
   
@@ -110,7 +112,7 @@ controller_interface::return_type MyController_class::update(
   Eigen::VectorXd qdot_eigen = qdot_.data;
 
   
-   tau_d_.data = (G_.data) ;//- qdot_.data;
+   tau_d_.data = (G_.data) - qdot_.data * 0.5;
   //Eigen::VectorXd tau = G_.data - qdot_.data;
   
 
@@ -127,6 +129,34 @@ controller_interface::return_type MyController_class::update(
     command_interfaces_[i].set_value(torqe_command[i]);
   }
 
+
+   // Clear the data arrays
+  msg_qd_.data.clear();
+  msg_q_.data.clear();
+  msg_e_.data.clear();
+  msg_tau_.data.clear();
+
+
+  // Fill the data arrays with the calculated values
+  for (int i = 0; i < num_joints; i++)
+  {
+      msg_qd_.data.push_back(qdot_(i));
+      msg_q_.data.push_back(q_(i));
+      msg_e_.data.push_back(exertedEffort_(i));
+      msg_tau_.data.push_back(tau_d_(i));
+  }
+
+
+  // Publish data to topics
+  pub_qd_->publish(msg_qd_);
+  pub_q_->publish(msg_q_);
+  pub_e_->publish(msg_e_);
+  pub_tau_->publish(msg_tau_);
+
+
+
+
+
   return controller_interface::return_type::OK;
 }
 
@@ -137,6 +167,13 @@ CallbackReturn MyController_class::on_init() {
     get_node()->set_parameter(rclcpp::Parameter("use_sim_time", true));
     // Declare your custom parameters here
     // auto_declare<double>("my_custom_parameter", 1.0);
+
+    // Create publishers for the desired and current joint positions, velocities, and accelerations
+    pub_qd_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd", 1000);
+    pub_q_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q", 1000);
+    pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 1000);
+    pub_tau_= get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("tau", 1000);
+
   } catch (const std::exception& e) {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
     return CallbackReturn::ERROR;
@@ -301,6 +338,9 @@ CallbackReturn MyController_class::on_configure(
     }
   }
 
+  // Set the gravity vector
+  gravity_ = KDL::Vector::Zero(); 
+  gravity_(2) = -9.81;    
   // Create the KDL chain dyn param solver
   id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
 
@@ -335,6 +375,9 @@ CallbackReturn MyController_class::on_activate(
   C_.data.setZero();
   G_.data.setZero();
 
+
+
+
   // t = 0.0;  // Initialize the simulation time variable
 
   // // Initialize the variables
@@ -350,6 +393,8 @@ CallbackReturn MyController_class::on_activate(
   // aux_d_.resize(num_joints);
   // comp_d_.resize(num_joints);
    tau_d_.resize(num_joints);
+    
+  exertedEffort_.resize(num_joints);
 
   // Kp_.resize(num_joints);
   // Ki_.resize(num_joints);
@@ -359,11 +404,12 @@ CallbackReturn MyController_class::on_activate(
   //   SaveData_[i] = 0.0;
   // }
 
-  // // Activate the publishers
-  // pub_qd_->on_activate();
-  // pub_q_->on_activate();
-  // pub_e_->on_activate();
-  // pub_SaveData_->on_activate();
+  // Activate the publishers
+  pub_qd_->on_activate();
+  pub_q_->on_activate();
+  pub_e_->on_activate();
+  pub_tau_->on_activate();
+  
 
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
   return CallbackReturn::SUCCESS;
@@ -371,7 +417,7 @@ CallbackReturn MyController_class::on_activate(
 
 void MyController_class::updateJointStates() {
   // Pre-check array size to avoid bounds checking in loop
-  if (state_interfaces_.size() != 2 * num_joints) {
+  if (state_interfaces_.size() != 3 * num_joints) {
     RCLCPP_ERROR(get_node()->get_logger(), "Invalid number of state interfaces");
     return;
   }
@@ -380,12 +426,14 @@ void MyController_class::updateJointStates() {
   auto* interfaces = state_interfaces_.data();
   for (size_t i = 0; i < num_joints; ++i) {
     // Access interfaces directly with pointer arithmetic
-    const auto& position_interface = interfaces[2 * i];
-    const auto& velocity_interface = interfaces[2 * i + 1];
+    const auto& position_interface = interfaces[3 * i];
+    const auto& velocity_interface = interfaces[3 * i + 1];
+    const auto& effort_interface = interfaces[3 * i + 2];
     
     // Interface name comparison
     const auto& pos_name = position_interface.get_interface_name();
     const auto& vel_name = velocity_interface.get_interface_name();
+    const auto& eff_name = effort_interface.get_interface_name();
     
     if (pos_name != "position") {
       RCLCPP_ERROR(get_node()->get_logger(), "Expected position interface, but got %s", 
@@ -397,10 +445,16 @@ void MyController_class::updateJointStates() {
                    vel_name.c_str());
       return;
     }
+    if (eff_name != "effort") {
+      RCLCPP_ERROR(get_node()->get_logger(), "Expected velocity interface, but got %s", 
+                   eff_name.c_str());
+      return;
+    }
 
     // Direct value assignment
     position_interface_values_(i) = position_interface.get_value();
     velocity_interface_values_(i) = velocity_interface.get_value();
+    effort_interface_values_(i) = effort_interface.get_value();
   }
 }
 

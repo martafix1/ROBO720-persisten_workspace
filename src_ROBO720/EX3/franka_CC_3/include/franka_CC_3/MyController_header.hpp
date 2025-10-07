@@ -56,6 +56,7 @@ class MyController_class : public controller_interface::ControllerInterface {
 
   Vector7d position_interface_values_;
   Vector7d velocity_interface_values_;
+  Vector7d effort_interface_values_;
   
   // KDL
   KDL::Tree kdl_tree_;
@@ -72,6 +73,7 @@ class MyController_class : public controller_interface::ControllerInterface {
 
   //Joint space state
   KDL::JntArray qd_, qd_dot_, qd_ddot_;
+  KDL::JntArray exertedEffort_;
   KDL::JntArray q_, qdot_;
   KDL::JntArray e_, e_dot_, e_int_;
 
@@ -88,6 +90,21 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::string root_name, tip_name;  //this coz why not hardcode it
   // std::vector<hardware_interface::JointHandle> joints_;  // joint handles
   std::vector<urdf::JointConstSharedPtr> joint_urdfs_;  // joint urdfs
+
+  // Publishers
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qd_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_q_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_e_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_tau_;
+  
+
+  // messages
+  std_msgs::msg::Float64MultiArray msg_qd_;
+  std_msgs::msg::Float64MultiArray msg_q_;  
+  std_msgs::msg::Float64MultiArray msg_e_;
+  std_msgs::msg::Float64MultiArray msg_tau_;
+
+
 
 
   // Add your custom controller variables here
