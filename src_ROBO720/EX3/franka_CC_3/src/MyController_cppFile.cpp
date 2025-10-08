@@ -412,7 +412,7 @@ CallbackReturn MyController_class::on_activate(
 
   aux_d_.resize(num_joints);
   comp_d_.resize(num_joints);
-   tau_d_.resize(num_joints);
+  tau_d_.resize(num_joints);
     
   exertedEffort_.resize(num_joints);
 
@@ -470,7 +470,7 @@ void MyController_class::updateJointStates() {
       return;
     }
     if (eff_name != "effort") {
-      RCLCPP_ERROR(get_node()->get_logger(), "Expected velocity interface, but got %s", 
+      RCLCPP_ERROR(get_node()->get_logger(), "Expected effort interface, but got %s", 
                    eff_name.c_str());
       return;
     }
