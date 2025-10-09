@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'node1 = pathing_py.node1:main', #add this
             'node2 = pathing_py.node2:main', #add this
+            'node3 = pathing_py.node3:main', #add this
         ],
     },
 )
