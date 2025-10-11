@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+import os
+import glob
 
 package_name = 'pathing_py'
 
@@ -10,11 +12,18 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # Include all .srv files in the install
+        (os.path.join('share', package_name, 'srv'), glob.glob('srv/*.srv')),
     ],
-    install_requires=['setuptools'],
+    install_requires=[
+        'setuptools',
+        'sensor_msgs',
+        'trajectory_msgs',
+        'geometry_msgs',
+    ],
     zip_safe=True,
     maintainer='root',
-    maintainer_email='martafix@gmail.com',
+    maintainer_email='kkk@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
@@ -27,6 +36,9 @@ setup(
             'node1 = pathing_py.node1:main', #add this
             'node2 = pathing_py.node2:main', #add this
             'node3 = pathing_py.node3:main', #add this
+            'node4 = pathing_py.node4:main', #add this
+            'node5 = pathing_py.node5_JointSpaceArbiter:main', #add this
+            'node5_JointSpaceArbiter = pathing_py.node5_JointSpaceArbiter:main', #add this
         ],
     },
 )

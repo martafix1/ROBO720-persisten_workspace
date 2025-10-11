@@ -34,7 +34,7 @@ class TaskSpaceObjectivePublisher(Node):
             self.moving = True
             self.amplitude = 0.6
 
-            self.square_centre = [0,0,2]
+            self.square_centre = [0,0,1]
             self.robot_base = [0,0,0]
 
 
@@ -67,7 +67,7 @@ class TaskSpaceObjectivePublisher(Node):
 
         # discretize ramp into 4 positions
         whichCorner = np.floor(waveState_ramp * 4) # 0,1,2,3 
-        cornerX = 1 if (whichCorner % 2) == 1 else -1
+        cornerX = 1 if (((whichCorner+1) // 2)  % 2) == 1 else -1
         cornerY = 1 if (whichCorner // 2) == 1 else -1
         
         activeCorner = [self.amplitude * (self.square_centre[0] + cornerX),
@@ -105,9 +105,9 @@ class TaskSpaceObjectivePublisher(Node):
 
         # Position + Orientation as Transform
         transform = Transform()
-        transform.translation.x = activeCorner[0]
-        transform.translation.y = activeCorner[1]
-        transform.translation.z = activeCorner[2]
+        transform.translation.x = float(activeCorner[0])
+        transform.translation.y = float(activeCorner[1])
+        transform.translation.z = float(activeCorner[2])
         transform.rotation.x = qx
         transform.rotation.y = qy
         transform.rotation.z = qz

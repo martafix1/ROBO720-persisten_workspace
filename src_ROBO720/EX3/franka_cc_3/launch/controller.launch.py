@@ -125,12 +125,12 @@ def generate_launch_description():
     declared_arguments = [
         DeclareLaunchArgument(
             "runtime_config_package",
-            default_value="franka_CC_3",  # Changed to your package
+            default_value="franka_cc_3",  # Changed to your package
             description='Package with the controller\'s configuration in "config" folder.',
         ),
         DeclareLaunchArgument(
             "controllers_file",
-            default_value="franka_CC_3.yaml",  # Changed to your config file
+            default_value="franka_cc_3.yaml",  # Changed to your config file
             # default_value="franka_cust_contro.yaml",  # Crippled for testing
             description="YAML file with the controllers configuration.",
         ),

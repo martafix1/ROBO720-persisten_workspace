@@ -20,6 +20,7 @@
 #include <kdl/chain.hpp>
 #include <kdl/chaindynparam.hpp>
 #include <kdl_parser/kdl_parser.hpp>
+#include <kdl/chainiksolverpos_lma.hpp>
 
 // Trajectory point
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
@@ -27,8 +28,15 @@
 // Memory management (use standard C++ smart pointers)
 #include <memory>
 
-
-
+// Service
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+#include "franka_cc_3/srv/compute_ik.hpp"
+// #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+// #include <tf2/LinearMath/Transform.hpp>
+#include <kdl/chainfksolverpos_recursive.hpp>
+#include <kdl/chainiksolvervel_pinv.hpp>
+#include <kdl/chainiksolverpos_nr_jl.hpp>
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -61,6 +69,13 @@ class MyController_class : public controller_interface::ControllerInterface {
   Vector7d velocity_interface_values_;
   Vector7d effort_interface_values_;
   
+  // service
+  rclcpp::Service<franka_cc_3::srv::ComputeIK>::SharedPtr ik_service_;
+  void computeIKCallback(
+    const std::shared_ptr<franka_cc_3::srv::ComputeIK::Request> request,
+    std::shared_ptr<franka_cc_3::srv::ComputeIK::Response> response);
+  
+
   // KDL
   KDL::Tree kdl_tree_;
   KDL::Chain kdl_chain_;
@@ -73,6 +88,16 @@ class MyController_class : public controller_interface::ControllerInterface {
 
   // kdl solver (solver to compute the inverse dynamics)
   std::unique_ptr<KDL::ChainDynParam> id_solver_;
+  // std::unique_ptr<KDL::ChainIkSolverPos_LMA> ik_solver_;
+
+  // for IK:
+  // Joint limits
+  KDL::JntArray joint_min_limits_;
+  KDL::JntArray joint_max_limits_;
+  std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
+  std::unique_ptr<KDL::ChainIkSolverVel_pinv> ik_vel_solver_;
+  std::unique_ptr<KDL::ChainIkSolverPos_NR_JL> ik_solver_;
+  
 
   //Joint space state
   KDL::JntArray qd_, qd_dot_, qd_ddot_;
@@ -99,6 +124,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_q_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_e_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_tau_;
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_EE_pos;
   
 
   // messages
@@ -107,7 +133,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   std_msgs::msg::Float64MultiArray msg_e_;
   std_msgs::msg::Float64MultiArray msg_tau_;
 
-
+    //multitherading for the service i guess
+    rclcpp::executors::MultiThreadedExecutor::SharedPtr executor_;
+    std::thread spinner_thread_;
 
 
   // Add your custom controller variables here

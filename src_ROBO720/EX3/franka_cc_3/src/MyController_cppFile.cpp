@@ -2,7 +2,7 @@
 //
 // Licensed under the MIT License.
 
-#include <franka_CC_3/MyController_header.hpp>
+#include <franka_cc_3/MyController_header.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -145,11 +145,14 @@ controller_interface::return_type MyController_class::update(
   }
 
 
+
+
    // Clear the data arrays
   msg_qd_.data.clear();
   msg_q_.data.clear();
   msg_e_.data.clear();
   msg_tau_.data.clear();
+  
 
 
   // Fill the data arrays with the calculated values
@@ -167,7 +170,30 @@ controller_interface::return_type MyController_class::update(
   pub_q_->publish(msg_q_);
   pub_e_->publish(msg_e_);
   pub_tau_->publish(msg_tau_);
+  
 
+  KDL::Frame ee_frame;
+int fk_result = fk_solver_->JntToCart(q_, ee_frame);
+if (fk_result >= 0) {
+  geometry_msgs::msg::PoseStamped msg;
+  msg.header.stamp = node_clock_->now();
+  msg.header.frame_id = root_name; // or "base_link" etc.
+
+  msg.pose.position.x = ee_frame.p.x();
+  msg.pose.position.y = ee_frame.p.y();
+  msg.pose.position.z = ee_frame.p.z();
+
+  double x, y, z, w;
+  ee_frame.M.GetQuaternion(x, y, z, w);
+  msg.pose.orientation.x = x;
+  msg.pose.orientation.y = y;
+  msg.pose.orientation.z = z;
+  msg.pose.orientation.w = w;
+
+  pub_EE_pos->publish(msg);
+} else {
+  RCLCPP_WARN(get_node()->get_logger(), "Failed to compute FK");
+}
 
 
 
@@ -188,6 +214,7 @@ CallbackReturn MyController_class::on_init() {
     pub_q_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q", 1000);
     pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 1000);
     pub_tau_= get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("tau", 1000);
+    pub_EE_pos = get_node()->create_publisher<geometry_msgs::msg::PoseStamped>("EE_pos", 1000);
 
   } catch (const std::exception& e) {
     fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
@@ -199,7 +226,8 @@ CallbackReturn MyController_class::on_init() {
 CallbackReturn MyController_class::on_configure(
     const rclcpp_lifecycle::State& /*previous_state*/) {
   is_gazebo = get_node()->get_parameter("gazebo").as_bool();
-
+  
+  
 
   node_clock_ = get_node()->get_clock();
   RCLCPP_INFO(get_node()->get_logger(), "\033[35m Clock type: \033[0m %d", node_clock_->get_clock_type());
@@ -275,6 +303,26 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
     }
     joint_urdfs_.push_back(joint_urdf);
   }
+  // Initialize joint limits
+  joint_min_limits_ = KDL::JntArray(num_joints);
+  joint_max_limits_ = KDL::JntArray(num_joints);
+
+  for (size_t i = 0; i < num_joints; ++i) {
+    const auto& joint_urdf = joint_urdfs_[i];
+
+    if (!joint_urdf->limits) {
+      RCLCPP_ERROR(get_node()->get_logger(), "Joint '%s' has no limits defined!", joint_names_[i].c_str());
+      return CallbackReturn::ERROR;
+    }
+
+    joint_min_limits_(i) = joint_urdf->limits->lower;
+    joint_max_limits_(i) = joint_urdf->limits->upper;
+
+    RCLCPP_INFO(get_node()->get_logger(), "Joint '%s' limits: [%f, %f]",
+                joint_names_[i].c_str(), joint_min_limits_(i), joint_max_limits_(i));
+  }
+
+
 
   // Get the KDL tree from the robot description
   if (!kdl_parser::treeFromUrdfModel(urdf, kdl_tree_))
@@ -363,6 +411,20 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
   gravity_(2) = -9.81;    
   // Create the KDL chain dyn param solver
   id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
+  //ik_solver_.reset(new KDL::ChainIkSolverPos_LMA(kdl_chain_));
+
+  // set up solvers
+  fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(kdl_chain_);
+  ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_pinv>(kdl_chain_);
+  ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
+  kdl_chain_,
+  joint_min_limits_,
+  joint_max_limits_,
+  *fk_solver_,
+  *ik_vel_solver_,
+  400,   // Max iterations
+  1e-5   // Tolerance
+);
 
   M_.resize(kdl_chain_.getNrOfJoints());
   C_.resize(kdl_chain_.getNrOfJoints());
@@ -378,9 +440,40 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
   }
   fprintf(stderr, "\n");
 
+  //ADDED multithread executor
+  executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+// Add the controller's node (the service is created on this node)
+executor_->add_node(get_node());
+
+// Spin the executor in a separate thread
+spinner_thread_ = std::thread([this]() {
+  executor_->spin();
+});
+
+
+
+
+
+
+
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class configured successfully!");
   return CallbackReturn::SUCCESS;
 }
+
+
+
+CallbackReturn MyController_class::on_cleanup(const rclcpp_lifecycle::State& /*previous_state*/) {
+  if (executor_) {
+    executor_->cancel();
+  }
+  if (spinner_thread_.joinable()) {
+    spinner_thread_.join();
+  }
+
+  return CallbackReturn::SUCCESS;
+}
+
+
 
 CallbackReturn MyController_class::on_activate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
@@ -433,7 +526,19 @@ CallbackReturn MyController_class::on_activate(
   pub_q_->on_activate();
   pub_e_->on_activate();
   pub_tau_->on_activate();
-  
+  pub_EE_pos->on_activate();
+
+
+    // init IK service:
+    
+  ik_service_ = get_node()->create_service<franka_cc_3::srv::ComputeIK>(
+    "compute_ik",
+    std::bind(&MyController_class::computeIKCallback, this,
+              std::placeholders::_1, std::placeholders::_2)
+  );
+  RCLCPP_INFO(get_node()->get_logger(), "Node name: %s", get_node()->get_name());
+  RCLCPP_INFO(get_node()->get_logger(), "IK service created");
+
 
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
   return CallbackReturn::SUCCESS;
@@ -481,6 +586,40 @@ void MyController_class::updateJointStates() {
     effort_interface_values_(i) = effort_interface.get_value();
   }
 }
+
+void MyController_class::computeIKCallback(
+    const std::shared_ptr<franka_cc_3::srv::ComputeIK::Request> request,
+    std::shared_ptr<franka_cc_3::srv::ComputeIK::Response> response)
+{
+    RCLCPP_INFO(get_node()->get_logger(), "Got IK request");
+    const auto & pose_msg = request->target_pose.pose;
+
+    KDL::Rotation rotation = KDL::Rotation::Quaternion(pose_msg.orientation.x, pose_msg.orientation.y, pose_msg.orientation.z, pose_msg.orientation.w);
+    KDL::Frame target = KDL::Frame(rotation, KDL::Vector(pose_msg.position.x, pose_msg.position.y, pose_msg.position.z));
+    
+    // tf2::fromMsg(request->target_pose.pose, target);   //tf2 does not work for some reason
+    KDL::JntArray initial_guess(num_joints);
+      initial_guess = q_;
+    // Set initial guess (you might want to use current joint positions)
+
+    KDL::JntArray result(num_joints);
+
+    int ret = ik_solver_->CartToJnt(initial_guess, target, result);
+    RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
+    if (ret >= 0) {
+        response->solution.name = joint_names_; // provide your joint names
+        response->solution.position.resize(num_joints);
+        for (size_t i = 0; i < num_joints; ++i) {
+            response->solution.position[i] = result(i);
+        }
+        response->success = true;
+    } else {
+        response->success = false;
+        response->error_message = "IK failed with code: " + std::to_string(ret);
+    }
+}
+
+
 
 
 

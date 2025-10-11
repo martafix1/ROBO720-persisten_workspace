@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<library path="libfranka_CC_3">
+<library path="libfranka_cc_3_lib">
   <class name="MyController_nameOfPlugin"
    type="MyController_namespace::MyController_class"
    base_class_type="controller_interface::ControllerInterface">
