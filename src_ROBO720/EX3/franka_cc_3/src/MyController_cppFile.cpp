@@ -443,7 +443,8 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
   //ADDED multithread executor
   executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
 // Add the controller's node (the service is created on this node)
-executor_->add_node(get_node());
+  executor_->add_node(get_node()->get_node_base_interface());
+
 
 // Spin the executor in a separate thread
 spinner_thread_ = std::thread([this]() {
