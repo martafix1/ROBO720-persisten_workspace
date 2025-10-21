@@ -65,26 +65,6 @@ controller_interface::return_type MyController_class::update(
     const rclcpp::Duration& period) {
   elapsed_time_ = elapsed_time_ + period;
   
-  // YOUR CUSTOM CONTROL LOGIC GOES HERE
-  // This example is based on the original but you can modify it completely
-  
-  // rclcpp::Duration time_max(3.0, 0.0);
-  // double omega_max = 0.4;
-  // double cycle = std::floor(std::pow(
-  //     -1.0, (elapsed_time_.seconds() - std::fmod(elapsed_time_.seconds(), time_max.seconds())) /
-  //               time_max.seconds()));
-  // double omega = cycle * omega_max / 2.0 *
-  //                (1.0 - std::cos(2.0 * M_PI / time_max.seconds() * elapsed_time_.seconds()));
-
-  // double myWave = std::sin(2.0 * M_PI / time_max.seconds() * elapsed_time_.seconds());
- 
-
-  // this uses the requested_velocities
-
-  // {
-  //   std::lock_guard<std::mutex> lock(angle_command_mutex_);
-  //   angles = requested_angles_;
-  // }
 
 
 
@@ -94,17 +74,26 @@ controller_interface::return_type MyController_class::update(
   updateJointStates();
   
   //switcheroo as they cannot be assigned. 
-  for (int i = 0; i < num_joints; i++)
-  {
-      q_(i) = position_interface_values_(i);
-      qdot_(i) = velocity_interface_values_(i);
-      exertedEffort_(i) = effort_interface_values_(i);
+  // for (int i = 0; i < num_joints; i++)
+  // {
+  //     q_(i) = position_interface_values_(i);
+  //     qdot_(i) = velocity_interface_values_(i);
+  //     exertedEffort_(i) = effort_interface_values_(i);
 
-      qd_(i) = req_pos[i];
-      qd_dot_(i) = req_vel[i];
-      qd_ddot_(i) = req_acc[i];
-  }
+  //     qd_(i) = req_pos[i];
+  //     qd_dot_(i) = req_vel[i];
+  //     qd_ddot_(i) = req_acc[i];
+  // }
 
+
+  //rate limiter
+  if(rateLimiter_100 < 1000){rateLimiter_100++;}
+  else{
+    rateLimiter_100 = 0;
+    ex3_smarterControllers(1);
+  } 
+
+  
 
   e_.data = qd_.data - q_.data;
   e_dot_.data = qd_dot_.data - qdot_.data;
@@ -237,23 +226,38 @@ CallbackReturn MyController_class::on_configure(
 
   // reqested angle subscriber
   auto node = get_node();  // Shortcut
-req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::JointTrajectoryPoint>(
-    "/requested_traj_point",
-    10,
-    [this](const trajectory_msgs::msg::JointTrajectoryPoint::SharedPtr msg) {
-      if (msg->positions.size() != num_joints ||
-          msg->velocities.size() != num_joints ||
-          msg->accelerations.size() != num_joints) {
-        RCLCPP_WARN(get_node()->get_logger(), "Received trajectory point with wrong sizes");
-        return;
-      }
+  req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::JointTrajectoryPoint>(
+      "/requested_traj_point",
+      10,
+      [this](const trajectory_msgs::msg::JointTrajectoryPoint::SharedPtr msg) {
+        if (msg->positions.size() != num_joints ||
+            msg->velocities.size() != num_joints ||
+            msg->accelerations.size() != num_joints) {
+          RCLCPP_WARN(get_node()->get_logger(), "Received trajectory point with wrong sizes");
+          return;
+        }
 
-      std::lock_guard<std::mutex> lock(req_traj_point_mutex_);
-      std::copy_n(msg->positions.begin(), num_joints, req_pos.begin());
-      std::copy_n(msg->velocities.begin(), num_joints, req_vel.begin());
-      std::copy_n(msg->accelerations.begin(), num_joints, req_acc.begin());
-    }
-);
+        std::lock_guard<std::mutex> lock(req_traj_point_mutex_);
+        std::copy_n(msg->positions.begin(), num_joints, req_pos.begin());
+        std::copy_n(msg->velocities.begin(), num_joints, req_vel.begin());
+        std::copy_n(msg->accelerations.begin(), num_joints, req_acc.begin());
+      }  
+  );
+
+  // Taskspace objective subscriber
+  taskspace_objective_subscriber = node->create_subscription<trajectory_msgs::msg::MultiDOFJointTrajectory>(
+            "/taskspace_objective",
+            10,
+            [this](const trajectory_msgs::msg::MultiDOFJointTrajectory::SharedPtr msg) {
+              if (msg->points.empty()) {
+                RCLCPP_WARN(get_node()->get_logger(), "Received message with no points");
+                return;
+              }
+
+                taskspace_objective_point = msg->points[0];
+
+            }
+  );
 
   auto parameters_client =
       std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "/robot_state_publisher");
@@ -306,6 +310,7 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
   // Initialize joint limits
   joint_min_limits_ = KDL::JntArray(num_joints);
   joint_max_limits_ = KDL::JntArray(num_joints);
+  joint_center_ = KDL::JntArray(num_joints);
 
   for (size_t i = 0; i < num_joints; ++i) {
     const auto& joint_urdf = joint_urdfs_[i];
@@ -317,7 +322,7 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
 
     joint_min_limits_(i) = joint_urdf->limits->lower;
     joint_max_limits_(i) = joint_urdf->limits->upper;
-
+    joint_center_(i) = (joint_max_limits_(i) - joint_min_limits_(i))/2 + joint_min_limits_(i);
     RCLCPP_INFO(get_node()->get_logger(), "Joint '%s' limits: [%f, %f]",
                 joint_names_[i].c_str(), joint_min_limits_(i), joint_max_limits_(i));
   }
@@ -415,15 +420,19 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
 
   // set up solvers
   fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(kdl_chain_);
-  ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_pinv>(kdl_chain_);
+  //ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_pinv>(kdl_chain_);
+  ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_wdls>(kdl_chain_);
+  ik_vel_solver_->setLambda(0.01); 
+
+
   ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
   kdl_chain_,
   joint_min_limits_,
   joint_max_limits_,
   *fk_solver_,
   *ik_vel_solver_,
-  400,   // Max iterations
-  1e-5   // Tolerance
+  1600,   // Max iterations
+  1e-3   // Tolerance
 );
 
   M_.resize(kdl_chain_.getNrOfJoints());
@@ -440,20 +449,6 @@ req_traj_point_subscriber_ = node->create_subscription<trajectory_msgs::msg::Joi
   }
   fprintf(stderr, "\n");
 
-  //ADDED multithread executor
-  executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
-// Add the controller's node (the service is created on this node)
-  executor_->add_node(get_node()->get_node_base_interface());
-
-
-// Spin the executor in a separate thread
-spinner_thread_ = std::thread([this]() {
-  executor_->spin();
-});
-
-
-
-
 
 
 
@@ -463,16 +458,7 @@ spinner_thread_ = std::thread([this]() {
 
 
 
-CallbackReturn MyController_class::on_cleanup(const rclcpp_lifecycle::State& /*previous_state*/) {
-  if (executor_) {
-    executor_->cancel();
-  }
-  if (spinner_thread_.joinable()) {
-    spinner_thread_.join();
-  }
 
-  return CallbackReturn::SUCCESS;
-}
 
 
 
@@ -592,7 +578,8 @@ void MyController_class::computeIKCallback(
     const std::shared_ptr<franka_cc_3::srv::ComputeIK::Request> request,
     std::shared_ptr<franka_cc_3::srv::ComputeIK::Response> response)
 {
-    RCLCPP_INFO(get_node()->get_logger(), "Got IK request");
+    RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "Got IK request");
+    // RCLCPP_INFO(get_node()->get_logger(), "Got IK request");
     const auto & pose_msg = request->target_pose.pose;
 
     KDL::Rotation rotation = KDL::Rotation::Quaternion(pose_msg.orientation.x, pose_msg.orientation.y, pose_msg.orientation.z, pose_msg.orientation.w);
@@ -606,7 +593,8 @@ void MyController_class::computeIKCallback(
     KDL::JntArray result(num_joints);
 
     int ret = ik_solver_->CartToJnt(initial_guess, target, result);
-    RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
+    RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "IK: CartToJnt returned %d", ret);
+    // RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
     if (ret >= 0) {
         response->solution.name = joint_names_; // provide your joint names
         response->solution.position.resize(num_joints);
@@ -618,9 +606,122 @@ void MyController_class::computeIKCallback(
         response->success = false;
         response->error_message = "IK failed with code: " + std::to_string(ret);
     }
+    RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "Service done");
 }
 
 
+int MyController_class::InverseK(KDL::Frame target, KDL::JntArray &result){
+
+  KDL::JntArray initial_guess(num_joints);
+  // initial_guess = q_;
+  initial_guess = joint_center_;
+
+
+  std::string output;
+
+  for (int i = 0; i < num_joints; ++i) {
+      output += "J"  + std::to_string(i) +": " + std::to_string(initial_guess(i)) + ", ";
+  }
+  RCLCPP_INFO(get_node()->get_logger(), "Initial guess: %s", output.c_str());
+
+  RCLCPP_INFO(get_node()->get_logger(), "Target: x: %f, y: %f, z: %f", target.p.x(),target.p.y(),target.p.z());
+  double roll, pitch, yaw;
+  target.M.GetRPY(roll, pitch, yaw);
+  RCLCPP_INFO(get_node()->get_logger(), "Target: roll: %f, pitch: %f, yaw: %f",roll, pitch, yaw);
+
+  KDL::Frame ee_frame;
+  int fk_result = fk_solver_->JntToCart(q_, ee_frame);
+
+  if (fk_result >= 0) {
+      // Success — ee_frame now contains EE pose
+      double x = ee_frame.p.x();
+      double y = ee_frame.p.y();
+      double z = ee_frame.p.z();
+
+      double roll, pitch, yaw;
+      ee_frame.M.GetRPY(roll, pitch, yaw);
+
+      RCLCPP_INFO(get_node()->get_logger(), "EE pose: x=%.3f y=%.3f z=%.3f roll=%.3f pitch=%.3f yaw=%.3f",
+                  x, y, z, roll, pitch, yaw);
+  } else {
+      RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
+  }
+
+  int ret = ik_solver_->CartToJnt(initial_guess, target, result);
+  RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
+
+  return ret;
+}
+
+void MyController_class::ex3_smarterControllers(int controllerType){
+
+ KDL::Frame tsop_kdlFrame; 
+ if (!taskspace_objective_point.transforms.empty()) {
+    KDL::Vector position(
+        taskspace_objective_point.transforms[0].translation.x,
+        taskspace_objective_point.transforms[0].translation.y,
+        taskspace_objective_point.transforms[0].translation.z
+    );
+    KDL::Rotation orientation = KDL::Rotation::Quaternion(
+        taskspace_objective_point.transforms[0].rotation.x,
+        taskspace_objective_point.transforms[0].rotation.y,
+        taskspace_objective_point.transforms[0].rotation.z,
+        taskspace_objective_point.transforms[0].rotation.w
+    );
+    tsop_kdlFrame = KDL::Frame(orientation, position);
+
+  } else {
+    RCLCPP_WARN(get_node()->get_logger(), "No transform received yet — skipping frame conversion");
+    tsop_kdlFrame = KDL::Frame(
+    KDL::Rotation::Quaternion(0.0, 0.0, 0.0, 1.0),  // Identity orientation
+    KDL::Vector(1.0, 1.0, 1.0)                     // Position (x=1, y=2, z=3)
+    );
+    //return;
+  }
+
+
+  switch (controllerType)
+  {
+  case 1: //jointSpaceController
+    {
+    KDL::Frame target = tsop_kdlFrame;
+
+    KDL::JntArray result(num_joints);
+
+    int ret = InverseK(target,result);
+    if(ret!=0){
+        RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
+        break;
+    }
+
+    for(int i =0; i < num_joints; i++){
+        RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f",i+1,result(i));
+        qd_(i) = result(i);
+      }
+    
+
+      }
+    break;
+  
+  case 2: //taskSpaceController
+    /* code */
+    break;
+
+  default:
+    for(int i =0; i < num_joints; i++){
+      qd_(i) = qd_(i);
+      qd_dot_(i) = qd_dot_(i);
+      qd_ddot_(i) = qd_ddot_(i);
+    } 
+    break;
+  }
+
+
+
+
+
+
+}
 
 
 

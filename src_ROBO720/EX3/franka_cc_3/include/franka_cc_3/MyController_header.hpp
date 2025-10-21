@@ -25,6 +25,10 @@
 // Trajectory point
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
 
+// Taskspace objective 
+#include "trajectory_msgs/msg/multi_dof_joint_trajectory.hpp"
+#include "trajectory_msgs/msg/multi_dof_joint_trajectory_point.hpp"
+
 // Memory management (use standard C++ smart pointers)
 #include <memory>
 
@@ -36,6 +40,7 @@
 // #include <tf2/LinearMath/Transform.hpp>
 #include <kdl/chainfksolverpos_recursive.hpp>
 #include <kdl/chainiksolvervel_pinv.hpp>
+#include <kdl/chainiksolvervel_wdls.hpp>
 #include <kdl/chainiksolverpos_nr_jl.hpp>
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -58,7 +63,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   CallbackReturn on_init() override;
   CallbackReturn on_configure(const rclcpp_lifecycle::State& previous_state) override;
   CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
-  CallbackReturn on_cleanup(const rclcpp_lifecycle::State & previous_state) override;
+
 
  private:
   std::string robot_description_;
@@ -95,8 +100,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   // Joint limits
   KDL::JntArray joint_min_limits_;
   KDL::JntArray joint_max_limits_;
+  KDL::JntArray joint_center_;
   std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
-  std::unique_ptr<KDL::ChainIkSolverVel_pinv> ik_vel_solver_;
+  std::unique_ptr<KDL::ChainIkSolverVel_wdls> ik_vel_solver_;
   std::unique_ptr<KDL::ChainIkSolverPos_NR_JL> ik_solver_;
   
 
@@ -106,7 +112,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   KDL::JntArray q_, qdot_;
   KDL::JntArray e_, e_dot_, e_int_;
 
-  // input
+  // torqe Controller
   KDL::JntArray aux_d_;
   KDL::JntArray comp_d_;
   KDL::JntArray tau_d_;
@@ -134,13 +140,13 @@ class MyController_class : public controller_interface::ControllerInterface {
   std_msgs::msg::Float64MultiArray msg_e_;
   std_msgs::msg::Float64MultiArray msg_tau_;
 
-    //multitherading for the service i guess
-    rclcpp::executors::MultiThreadedExecutor::SharedPtr executor_;
-    std::thread spinner_thread_;
-
 
   // Add your custom controller variables here
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectoryPoint>::SharedPtr req_traj_point_subscriber_; //subscriber object
+  rclcpp::Subscription<trajectory_msgs::msg::MultiDOFJointTrajectory>::SharedPtr taskspace_objective_subscriber; // subscriber for taskspace objective
+
+  trajectory_msgs::msg::MultiDOFJointTrajectoryPoint taskspace_objective_point;
+
   std::array<double, 7> req_pos = {0.0};
   std::array<double, 7> req_vel = {0.0};
   std::array<double, 7> req_acc = {0.0};
@@ -155,7 +161,10 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp::Clock::SharedPtr node_clock_;
   
   void updateJointStates();
+  void ex3_smarterControllers(int controllerType);
+  int InverseK(KDL::Frame target, KDL::JntArray &result);
 
+  int rateLimiter_100 = 0;
 
 };
 

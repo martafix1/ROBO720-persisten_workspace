@@ -103,7 +103,7 @@ class JointSpaceArbiter(Node):
         self.get_logger().info(f"Sending request")
         # Call the service
         future = self.computeIKClient.call_async(self.computeIKRequest)
-        rclpy.spin_until_future_complete(self, future)
+        rclpy.spin_until_future_complete(self, future,timeout_sec=5.0)
 
         if future.result() is not None:
             response = future.result()

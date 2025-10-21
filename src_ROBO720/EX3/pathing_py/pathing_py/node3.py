@@ -32,9 +32,9 @@ class TaskSpaceObjectivePublisher(Node):
             self.motionPeriod = 25
             self.step = 0
             self.moving = True
-            self.amplitude = 0.6
+            self.amplitude = 0.1
 
-            self.square_centre = [0,0,1]
+            self.square_centre = [0,0,1.8]
             self.robot_base = [0,0,0]
 
 
