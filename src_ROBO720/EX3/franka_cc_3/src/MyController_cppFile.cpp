@@ -66,8 +66,23 @@ controller_interface::return_type MyController_class::update(
   elapsed_time_ = elapsed_time_ + period;
   
   std::array<double, 7> torqe_command;
- 
+      
   updateJointStates();
+
+    // switcheroo as they cannot be assigned. 
+  for (int i = 0; i < num_joints; i++)
+  {
+      q_(i) = position_interface_values_(i);
+      qdot_(i) = velocity_interface_values_(i);
+      exertedEffort_(i) = effort_interface_values_(i);
+
+      // qd_(i) = req_pos[i];
+      // qd_dot_(i) = req_vel[i];
+      // qd_ddot_(i) = req_acc[i];
+  }
+
+
+
   //rate limiter
   if(rateLimiter_100 < 1000){rateLimiter_100++;}
   else{
