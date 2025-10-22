@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 
 import rclpy
+
 from rclpy.node import Node
-
 from pathing_py.srv import GenerateTrajectory  # Replace with your actual package name
-
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, MultiDOFJointTrajectory
 
 
 class PlanTrajectoryServer(Node):
-
     def __init__(self):
         super().__init__('plan_trajectory_server')
         self.srv = self.create_service(
@@ -19,6 +17,7 @@ class PlanTrajectoryServer(Node):
             self.plan_trajectory_callback
         )
         self.get_logger().info('GenerateTrajectory service is ready.')
+
 
     def plan_trajectory_callback(self, request, response):
         # Log the incoming request
@@ -45,9 +44,8 @@ class PlanTrajectoryServer(Node):
             self.get_logger().info('Planning in task space...')
             # Do task space planning...
         
-        
-
         return response
+
 
 
 def main(args=None):

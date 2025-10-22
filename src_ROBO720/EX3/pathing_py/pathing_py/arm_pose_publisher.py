@@ -6,8 +6,7 @@ import numpy as np
 import threading
 
 
-# This ROS 2 node publishes sinusoidal joint trajectories for a 7-DOF robot to /requested_traj_point,
-# allowing real-time control of motion parameters through simple terminal commands.
+# This Node will take keyboard inputs and will share trajectory for the arm.
 
 
 position_lim_MAX = [ 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973]
@@ -20,37 +19,32 @@ center_pos = (max_pos + min_pos)/2
 range_of_motion = max_pos-min_pos
 
 
-#
-
-class JointTrajectoryPointPublisher(Node):
+class ArmPosePublisher(Node):
     def __init__(self):
         try:
-            super().__init__('joint_trajectory_point_publisher')
-            
-            self.publisher_ = self.create_publisher(JointTrajectoryPoint, '/requested_traj_point', 10)
-            self.timerPeriod = 0.001
-            self.timer = self.create_timer(self.timerPeriod, self.timer_callback)
-            
+            super().__init__('arm_pose_publisher')
+
             self.motionPeriod = 5
             self.step = 0
             self.moving = True
             self.amplitude = 0.6
+            self.timerPeriod = 0.001
+            self.running = True      
 
-            self.running = True                    
+            self.publisher_ = self.create_publisher(ArmPosePublisher, '/requested_traj_point', 10)
+            self.timer = self.create_timer(self.timerPeriod, self.timer_callback)
+                          
             self._start_input_thread()             
 
             # Give the publisher some time to set up
             time.sleep(1)
         except Exception as e:
-            print(f" Error during JointTrajectoryPointPublisher init: {e}")
-        
-
-        
+            print(f" Error during ArmPosePublisher init: {e}")
         
 
     def timer_callback(self):
         # Create a message
-        point = JointTrajectoryPoint()
+        point = ArmPosePublisher()
         
         period_cycles = self.motionPeriod/self.timerPeriod
         w_t = 2*np.pi /self.motionPeriod
@@ -78,10 +72,11 @@ class JointTrajectoryPointPublisher(Node):
         self.publisher_.publish(point)
 
 
-
+    ## Keyboard Input Functions
     def _start_input_thread(self):
         thread = threading.Thread(target=self._input_loop, daemon=True)
         thread.start()
+
 
     def _input_loop(self):
         print("Input loop started. Inpud commands (help for help)")
@@ -95,6 +90,7 @@ class JointTrajectoryPointPublisher(Node):
                 break
             except Exception as e:
                 self.get_logger().error(f"Error reading input: {e}")
+
 
     def _handle_command(self, cmd: str):
         if cmd == "help":
@@ -138,13 +134,16 @@ class JointTrajectoryPointPublisher(Node):
         else:
             self.get_logger().warn(f"Unknown command: '{cmd}'")
 
+
     def stop(self):
         self.running = False
+
+
 
 def main(args=None):
     rclpy.init(args=args)
     print("Creating node...")
-    node = JointTrajectoryPointPublisher()
+    node = ArmPosePublisher()
     print("Node created, spinning...")
     try:
         print("Spinnup")

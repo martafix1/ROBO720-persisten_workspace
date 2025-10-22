@@ -4,6 +4,10 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 import math
 
 
+# This node publishes sinusoidal joint trajectory points—positions, velocities,
+# and accelerations—for 7 joints at 100 Hz on the /requested_traj_point topic.
+
+
 class JointTrajectoryPointPublisher(Node):
     def __init__(self):
         super().__init__('joint_trajectory_point_publisher')

@@ -3,7 +3,7 @@ from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectoryPoint
 from trajectory_msgs.msg import JointTrajectory, MultiDOFJointTrajectory,  MultiDOFJointTrajectoryPoint
 import math
-from geometry_msgs.msg import Transform, Twist,PoseStamped
+from geometry_msgs.msg import Transform, Twist, PoseStamped
 from tf_transformations import quaternion_from_euler
 from franka_cc_3.srv import ComputeIK
 

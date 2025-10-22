@@ -44,7 +44,7 @@ MyController_class::state_interface_configuration() const {
 }
 
 MyController_class::MyController_class(){
-   for (int i = 0; i < num_joints; ++i) {
+  for (int i = 0; i < num_joints; ++i) {
     position_centers[i] = (position_lim_MAX[i] + position_lim_MIN[i]) / 2.0f;
     position_ranges[i] = position_lim_MAX[i] - position_lim_MIN[i];
   }
@@ -65,27 +65,9 @@ controller_interface::return_type MyController_class::update(
     const rclcpp::Duration& period) {
   elapsed_time_ = elapsed_time_ + period;
   
-
-
-
-
   std::array<double, 7> torqe_command;
  
   updateJointStates();
-  
-  //switcheroo as they cannot be assigned. 
-  // for (int i = 0; i < num_joints; i++)
-  // {
-  //     q_(i) = position_interface_values_(i);
-  //     qdot_(i) = velocity_interface_values_(i);
-  //     exertedEffort_(i) = effort_interface_values_(i);
-
-  //     qd_(i) = req_pos[i];
-  //     qd_dot_(i) = req_vel[i];
-  //     qd_ddot_(i) = req_acc[i];
-  // }
-
-
   //rate limiter
   if(rateLimiter_100 < 1000){rateLimiter_100++;}
   else{
@@ -93,66 +75,48 @@ controller_interface::return_type MyController_class::update(
     ex3_smarterControllers(1);
   } 
 
-  
-
   e_.data = qd_.data - q_.data;
   e_dot_.data = qd_dot_.data - qdot_.data;
-  // e_int_.data = qd_.data - q_.data; //wtf is dis for
-
   
-    // Compute model(M,C,G) 
+  // Compute model(M,C,G) 
   id_solver_->JntToMass(q_, M_);
   id_solver_->JntToCoriolis(q_, qdot_, C_);
   id_solver_->JntToGravity(q_, G_); 
 
-
-    //switch from kdl JntArray to eigen for matrix operations
+  //switch from kdl JntArray to eigen for matrix operations
   //Eigen::VectorXd qdot_eigen = qdot_.data;
 
   aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
   comp_d_.data = C_.data + G_.data;
   tau_d_.data = aux_d_.data + comp_d_.data;
-
-
-
   
   // tau_d_.data = (G_.data) - qdot_.data * 0.5;
   //Eigen::VectorXd tau = G_.data - qdot_.data;
   
-
   for(int i =0; i <num_joints; ++i){
     torqe_command[i] =  tau_d_(i); //not needed rn likely
-    //torqe_command[i] =  tau(i); //not needed rn likely
-    
+  
   }
-  
   //RCLCPP_INFO(get_node()->get_logger(), "\033[35m ItDidWork: \033[0m %d", 4);
-  
 
   for (int i = 0; i < num_joints; ++i) {
     command_interfaces_[i].set_value(torqe_command[i]);
   }
 
-
-
-
-   // Clear the data arrays
+  // Clear the data arrays
   msg_qd_.data.clear();
   msg_q_.data.clear();
   msg_e_.data.clear();
   msg_tau_.data.clear();
   
-
-
   // Fill the data arrays with the calculated values
   for (int i = 0; i < num_joints; i++)
   {
-      msg_qd_.data.push_back(qdot_(i));
-      msg_q_.data.push_back(q_(i));
-      msg_e_.data.push_back(exertedEffort_(i));
-      msg_tau_.data.push_back(tau_d_(i));
+    msg_qd_.data.push_back(qdot_(i));
+    msg_q_.data.push_back(q_(i));
+    msg_e_.data.push_back(exertedEffort_(i));
+    msg_tau_.data.push_back(tau_d_(i));
   }
-
 
   // Publish data to topics
   pub_qd_->publish(msg_qd_);
@@ -162,30 +126,27 @@ controller_interface::return_type MyController_class::update(
   
 
   KDL::Frame ee_frame;
-int fk_result = fk_solver_->JntToCart(q_, ee_frame);
-if (fk_result >= 0) {
-  geometry_msgs::msg::PoseStamped msg;
-  msg.header.stamp = node_clock_->now();
-  msg.header.frame_id = root_name; // or "base_link" etc.
+  int fk_result = fk_solver_->JntToCart(q_, ee_frame);
+  if (fk_result >= 0) {
+    geometry_msgs::msg::PoseStamped msg;
+    msg.header.stamp = node_clock_->now();
+    msg.header.frame_id = root_name; // or "base_link" etc.
 
-  msg.pose.position.x = ee_frame.p.x();
-  msg.pose.position.y = ee_frame.p.y();
-  msg.pose.position.z = ee_frame.p.z();
+    msg.pose.position.x = ee_frame.p.x();
+    msg.pose.position.y = ee_frame.p.y();
+    msg.pose.position.z = ee_frame.p.z();
 
-  double x, y, z, w;
-  ee_frame.M.GetQuaternion(x, y, z, w);
-  msg.pose.orientation.x = x;
-  msg.pose.orientation.y = y;
-  msg.pose.orientation.z = z;
-  msg.pose.orientation.w = w;
+    double x, y, z, w;
+    ee_frame.M.GetQuaternion(x, y, z, w);
+    msg.pose.orientation.x = x;
+    msg.pose.orientation.y = y;
+    msg.pose.orientation.z = z;
+    msg.pose.orientation.w = w;
 
-  pub_EE_pos->publish(msg);
-} else {
-  RCLCPP_WARN(get_node()->get_logger(), "Failed to compute FK");
-}
-
-
-
+    pub_EE_pos->publish(msg);
+  } else {
+    RCLCPP_WARN(get_node()->get_logger(), "Failed to compute FK");
+  }
 
   return controller_interface::return_type::OK;
 }
@@ -405,9 +366,10 @@ CallbackReturn MyController_class::on_configure(
     RCLCPP_INFO(get_node()->get_logger(), "  Chain has %d joints", kdl_chain_.getNrOfJoints());
     RCLCPP_INFO(get_node()->get_logger(), "  Chain has %d segments", kdl_chain_.getNrOfSegments());
     RCLCPP_INFO(get_node()->get_logger(), "  The kdl_chain_ segments are:");
+    
     for (unsigned int i = 0; i < kdl_chain_.getNrOfSegments(); i++) {
-        const KDL::Segment& segment = kdl_chain_.getSegment(i);
-        RCLCPP_INFO(get_node()->get_logger(), "    %s", segment.getName().c_str());
+      const KDL::Segment& segment = kdl_chain_.getSegment(i);
+      RCLCPP_INFO(get_node()->get_logger(), "    %s", segment.getName().c_str());
     }
   }
 
@@ -433,7 +395,7 @@ CallbackReturn MyController_class::on_configure(
   *ik_vel_solver_,
   1600,   // Max iterations
   1e-3   // Tolerance
-);
+  );
 
   M_.resize(kdl_chain_.getNrOfJoints());
   C_.resize(kdl_chain_.getNrOfJoints());
@@ -443,40 +405,27 @@ CallbackReturn MyController_class::on_configure(
   fprintf(stderr, "Number of segments in kdl_tree_: %d\n", kdl_tree_.getNrOfSegments());
   fprintf(stderr, "Number of joints in kdl_chain_: %d\n", kdl_chain_.getNrOfJoints());
   fprintf(stderr, "Joint names in joint_names_: ");
-  for (int i = 0; i < num_joints; i++)
-  {
+  for (int i = 0; i < num_joints; i++){
     fprintf(stderr, "%s ", joint_names_[i].c_str());
   }
   fprintf(stderr, "\n");
-
-
-
 
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class configured successfully!");
   return CallbackReturn::SUCCESS;
 }
 
 
-
-
-
-
-
 CallbackReturn MyController_class::on_activate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
   elapsed_time_ = rclcpp::Duration(0, 0);
 
-
-// Initialize the joint states
+  // Initialize the joint states
   updateJointStates();
 
   // Initialize the KDL variables
   M_.data.setZero();
   C_.data.setZero();
   G_.data.setZero();
-
-
-
 
   // t = 0.0;  // Initialize the simulation time variable
 
@@ -515,18 +464,15 @@ CallbackReturn MyController_class::on_activate(
   pub_tau_->on_activate();
   pub_EE_pos->on_activate();
 
-
-    // init IK service:
-    
+  // init IK service:
   ik_service_ = get_node()->create_service<franka_cc_3::srv::ComputeIK>(
     "compute_ik",
     std::bind(&MyController_class::computeIKCallback, this,
               std::placeholders::_1, std::placeholders::_2)
   );
+
   RCLCPP_INFO(get_node()->get_logger(), "Node name: %s", get_node()->get_name());
   RCLCPP_INFO(get_node()->get_logger(), "IK service created");
-
-
   RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
   return CallbackReturn::SUCCESS;
 }
@@ -633,18 +579,19 @@ int MyController_class::InverseK(KDL::Frame target, KDL::JntArray &result){
   int fk_result = fk_solver_->JntToCart(q_, ee_frame);
 
   if (fk_result >= 0) {
-      // Success — ee_frame now contains EE pose
-      double x = ee_frame.p.x();
-      double y = ee_frame.p.y();
-      double z = ee_frame.p.z();
+    // Success — ee_frame now contains EE pose
+    double x = ee_frame.p.x();
+    double y = ee_frame.p.y();
+    double z = ee_frame.p.z();
 
-      double roll, pitch, yaw;
-      ee_frame.M.GetRPY(roll, pitch, yaw);
+    double roll, pitch, yaw;
+    ee_frame.M.GetRPY(roll, pitch, yaw);
 
-      RCLCPP_INFO(get_node()->get_logger(), "EE pose: x=%.3f y=%.3f z=%.3f roll=%.3f pitch=%.3f yaw=%.3f",
-                  x, y, z, roll, pitch, yaw);
-  } else {
-      RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
+    RCLCPP_INFO(get_node()->get_logger(), "EE pose: x=%.3f y=%.3f z=%.3f roll=%.3f pitch=%.3f yaw=%.3f",
+                x, y, z, roll, pitch, yaw);
+  } 
+  else {
+    RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
   }
 
   int ret = ik_solver_->CartToJnt(initial_guess, target, result);
@@ -704,7 +651,10 @@ void MyController_class::ex3_smarterControllers(int controllerType){
     break;
   
   case 2: //taskSpaceController
-    /* code */
+    
+    
+
+
     break;
 
   default:
