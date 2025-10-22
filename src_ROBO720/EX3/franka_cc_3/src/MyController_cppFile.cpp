@@ -704,7 +704,7 @@ namespace MyController_namespace
     // EE dist heuristics
     double frameDiff = compareFrames(ee_frame,target); 
     double tolerance = std::min(frameDiff*frameDiff*frameDiff,frameDiff/50);
-    RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
+    RCLCPP_INFO(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
     miscData[5] = frameDiff;
     miscData[6] = tolerance;
 
@@ -715,7 +715,7 @@ namespace MyController_namespace
         *fk_solver_,
         *ik_vel_solver_,
         1600, // Max iterations  default: 400
-        frameDiff/20
+        tolerance
         );  // Tolerance default: 1e-5
 
     int ret = ik_solver_->CartToJnt(initial_guess, target, result);
