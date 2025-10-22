@@ -73,17 +73,17 @@ controller_interface::return_type MyController_class::update(
  
   updateJointStates();
   
-  //switcheroo as they cannot be assigned. 
-  // for (int i = 0; i < num_joints; i++)
-  // {
-  //     q_(i) = position_interface_values_(i);
-  //     qdot_(i) = velocity_interface_values_(i);
-  //     exertedEffort_(i) = effort_interface_values_(i);
+  // switcheroo as they cannot be assigned. 
+  for (int i = 0; i < num_joints; i++)
+  {
+      q_(i) = position_interface_values_(i);
+      qdot_(i) = velocity_interface_values_(i);
+      exertedEffort_(i) = effort_interface_values_(i);
 
-  //     qd_(i) = req_pos[i];
-  //     qd_dot_(i) = req_vel[i];
-  //     qd_ddot_(i) = req_acc[i];
-  // }
+      // qd_(i) = req_pos[i];
+      // qd_dot_(i) = req_vel[i];
+      // qd_ddot_(i) = req_acc[i];
+  }
 
 
   //rate limiter
@@ -431,8 +431,8 @@ CallbackReturn MyController_class::on_configure(
   joint_max_limits_,
   *fk_solver_,
   *ik_vel_solver_,
-  1600,   // Max iterations
-  1e-3   // Tolerance
+  1600,   // Max iterations  default: 400
+  1e-3   // Tolerance default: 1e-5
 );
 
   M_.resize(kdl_chain_.getNrOfJoints());
@@ -500,7 +500,7 @@ CallbackReturn MyController_class::on_activate(
   Ki_.resize(num_joints);
   Kd_.resize(num_joints);
 
-  Kp_.data.setConstant(1);
+  Kp_.data.setConstant(2);
   Ki_.data.setConstant(0);
   Kd_.data.setConstant(1);
 
