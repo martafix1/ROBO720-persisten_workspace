@@ -26,7 +26,7 @@ class TaskSpaceObjectivePublisher(Node):
             super().__init__('taskspace_objective')
             
             self.publisher_ = self.create_publisher(MultiDOFJointTrajectory, '/taskspace_objective', 10) # must be Trajectory not just point coz point is not top level message and will crash
-            self.timerPeriod = 0.1
+            self.timerPeriod = 0.2
             self.timer = self.create_timer(self.timerPeriod, self.timer_callback)
             
             self.motionPeriod = 25

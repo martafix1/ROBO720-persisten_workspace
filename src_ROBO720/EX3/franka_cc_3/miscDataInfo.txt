@@ -1,0 +1,7 @@
+
+
+
+InverseK():
+miscData[5] = frameDiff;
+miscData[6] = tolerance;
+miscData[7] = ik_ee_target_diff;

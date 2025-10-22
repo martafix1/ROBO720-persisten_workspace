@@ -119,6 +119,13 @@ class MyController_class : public controller_interface::ControllerInterface {
     
   // gains
   KDL::JntArray Kp_, Ki_, Kd_;
+  
+
+  // for path planning
+  int pathSteps_1 = 0;
+  int maxpathSteps_1 = 40;
+  KDL::Frame lastTarget = KDL::Frame::Identity();
+
 
   // joint handles for URDF
   std::vector<std::string> joint_names_;  // joint names
@@ -131,7 +138,8 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_q_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_e_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_tau_;
-  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_EE_pos;
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_EE_pos; 
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_misc;
   
 
   // messages
@@ -139,7 +147,10 @@ class MyController_class : public controller_interface::ControllerInterface {
   std_msgs::msg::Float64MultiArray msg_q_;  
   std_msgs::msg::Float64MultiArray msg_e_;
   std_msgs::msg::Float64MultiArray msg_tau_;
-
+  std_msgs::msg::Float64MultiArray msg_miscData_;
+  
+  #define MISCDATAMAX 69
+  double miscData[MISCDATAMAX] = {0};
 
   // Add your custom controller variables here
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectoryPoint>::SharedPtr req_traj_point_subscriber_; //subscriber object
@@ -163,8 +174,10 @@ class MyController_class : public controller_interface::ControllerInterface {
   void updateJointStates();
   void ex3_smarterControllers(int controllerType);
   int InverseK(KDL::Frame target, KDL::JntArray &result);
-
-  int rateLimiter_100 = 0;
+  void TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps);
+  double compareFrames(KDL::Frame a, KDL::Frame b);
+  int rateLimiter_10_1 = 0;
+  int rateLimiter_10_2 = 0;
 
 };
 
