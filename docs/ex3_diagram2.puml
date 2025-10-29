@@ -1,0 +1,25 @@
+@startuml
+object "update()" as controller.1kHz.update
+object controller.service_callback
+object controller.kdl_tree
+object controller.jointStates
+object controller.on_configure.parseKDL
+object "InverseK()" as controller.inverseK
+
+object controller.taskSpaceObjective
+
+object "ex3_smarterControllers()" as controller.100Hz.ex3_smarterControllers
+
+object "moveInSquares()" as TaskSpaceObjectivePublisher.10Hz.moveInSquares
+
+moveInSquares ..> taskSpaceObjective : "topic: MultiDOFJointTrajectoryPoint"
+
+parseKDL ..> kdl_tree
+update ..> jointStates : "updateStates"
+
+ex3_smarterControllers --> inverseK
+ex3_smarterControllers <-- inverseK
+
+skinparam info left
+
+@enduml

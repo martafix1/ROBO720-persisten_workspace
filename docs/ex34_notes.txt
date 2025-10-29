@@ -1,0 +1,5 @@
+notes:
+
+velocity controller is for the diff, as diff gives kindof a possition error, of which the inverse jacobian is desired velocity.
+
+Also it seems that we need taskspace path planning anyway, as it would help it to converge for the IK and it seems like we can use it for both.

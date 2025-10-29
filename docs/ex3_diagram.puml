@@ -1,0 +1,30 @@
+@startuml
+object controller.1kHz.update
+object controller.service_callback
+object controller.kdl_tree
+object controller.jointStates
+object controller.on_configure.parseKDL
+
+object arbiter.50Hz.next_step
+
+object arbiter.send_IK_request
+object arbiter.taskSpaceObjective
+object arbiter.jointSpaceObjective
+
+object taskSpacePlanner.10Hz.motionPathPlanning
+
+motionPathPlanning ..> taskSpaceObjective : "topic"
+taskSpaceObjective ..> send_IK_request
+send_IK_request ..> jointSpaceObjective
+
+jointSpaceObjective .> update  : "topic"
+
+parseKDL ..> kdl_tree
+update ..> jointStates : "updateStates"
+
+next_step --> send_IK_request : "request IK"
+send_IK_request --> service_callback
+send_IK_request <-- service_callback
+service_callback <.. kdl_tree
+service_callback <.. jointStates
+@enduml
