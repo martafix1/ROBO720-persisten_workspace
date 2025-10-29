@@ -91,7 +91,7 @@ namespace MyController_namespace
     else
     {
       rateLimiter_100 = 0;
-      ex3_smarterControllers(1);
+      ex3_smarterControllers(2);
     }
 
     e_.data = qd_.data - q_.data;
@@ -419,6 +419,7 @@ namespace MyController_namespace
     // ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_pinv>(kdl_chain_);
     ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_wdls>(kdl_chain_);
     ik_vel_solver_->setLambda(0.01);
+    jac_solver_ = std::make_unique<KDL::ChainJntToJacSolver>(kdl_chain_);
 
     ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
         kdl_chain_,

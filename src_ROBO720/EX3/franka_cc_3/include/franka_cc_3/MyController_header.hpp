@@ -21,6 +21,8 @@
 #include <kdl/chaindynparam.hpp>
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chainiksolverpos_lma.hpp>
+#include <kdl/chainjnttojacsolver.hpp>
+
 
 // Trajectory point
 #include "trajectory_msgs/msg/joint_trajectory_point.hpp"
@@ -105,6 +107,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::unique_ptr<KDL::ChainIkSolverVel_wdls> ik_vel_solver_;
   std::unique_ptr<KDL::ChainIkSolverPos_NR_JL> ik_solver_;
   
+  std::unique_ptr<KDL::ChainJntToJacSolver>  jac_solver_;
+ 
+
 
   //Joint space state
   KDL::JntArray qd_, qd_dot_, qd_ddot_;
