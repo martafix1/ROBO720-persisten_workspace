@@ -703,48 +703,54 @@ namespace MyController_namespace
     break;
 
     case 2: // taskSpaceController
-    {
-      // Compute FK, errors, Jacobian
-      KDL::Frame ee_frame;
-      fk_solver_->JntToCart(q_, ee_frame);
+{
+  // Compute FK, errors, Jacobian
+  KDL::Frame ee_frame;
+  fk_solver_->JntToCart(q_, ee_frame);
 
-      KDL::Vector pos = ee_frame.p;
-      KDL::Rotation rot = ee_frame.M;
+  KDL::Vector pos = ee_frame.p;
+  KDL::Rotation rot = ee_frame.M;
 
-      KDL::Vector pos_d = tsop_kdlFrame.p;
-      KDL::Rotation rot_d = tsop_kdlFrame.M;
+  KDL::Vector pos_d = tsop_kdlFrame.p;
+  KDL::Rotation rot_d = tsop_kdlFrame.M;
 
-      KDL::Vector e_pos = pos_d - pos;
-      KDL::Rotation R_err = rot.Inverse() * rot_d;
+  KDL::Vector e_pos = pos_d - pos;
+  KDL::Rotation R_err = rot.Inverse() * rot_d;
 
-      Eigen::MatrixXd R_err_eigen = R_err.data;
+  // Convert KDL::Rotation to Eigen
+  Eigen::Matrix3d R_err_eigen;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      R_err_eigen(i, j) = R_err(i, j);
 
-      KDL::Vector e_rot = 0.5 * (R_err_eigen - R_err_eigen.Transpose()).GetVector();
+  Eigen::Matrix3d skew = 0.5 * (R_err_eigen - R_err_eigen.transpose());
+  Eigen::Vector3d e_rot(skew(2, 1), skew(0, 2), skew(1, 0));
 
-      Eigen::VectorXd e_x(6);
-      for (int i = 0; i < 3; i++)
-      {
-        e_x(i) = e_pos[i];
-        e_x(i + 3) = e_rot[i];
-      }
+  Eigen::VectorXd e_x(6);
+  for (int i = 0; i < 3; i++)
+  {
+    e_x(i) = e_pos[i];
+    e_x(i + 3) = e_rot(i);
+  }
 
-      KDL::Jacobian J(num_joints);
-      jac_solver_->JntToJac(q_, J);
-      Eigen::MatrixXd J_eigen = J.data;
+  KDL::Jacobian J(num_joints);
+  jac_solver_->JntToJac(q_, J);
+  Eigen::MatrixXd J_eigen = J.data;
 
-      // PD gains
-      Eigen::VectorXd Kp_task(6), Kd_task(6);
-      Kp_task.setConstant(200.0);
-      Kd_task.setConstant(20.0);
+  // PD gains
+  Eigen::VectorXd Kp_task(6), Kd_task(6);
+  Kp_task.setConstant(200.0);
+  Kd_task.setConstant(20.0);
 
-      Eigen::VectorXd x_ddot_d = Kp_task.cwiseProduct(e_x) + Kd_task.cwiseProduct(-J_eigen * qdot_.data);
+  Eigen::VectorXd x_ddot_d = Kp_task.cwiseProduct(e_x) + Kd_task.cwiseProduct(-J_eigen * qdot_.data);
 
-      Eigen::VectorXd tau = J_eigen.transpose() * x_ddot_d;
+  Eigen::VectorXd tau = J_eigen.transpose() * x_ddot_d;
 
-      for (int i = 0; i < num_joints; ++i)
-        tau_d_(i) = tau(i);
-    }
-    break;
+  for (int i = 0; i < num_joints; ++i)
+    tau_d_(i) = tau(i);
+}
+break;
+
 
     default:
       for (int i = 0; i < num_joints; i++)
