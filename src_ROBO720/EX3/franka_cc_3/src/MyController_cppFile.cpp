@@ -716,7 +716,10 @@ namespace MyController_namespace
 
       KDL::Vector e_pos = pos_d - pos;
       KDL::Rotation R_err = rot.Inverse() * rot_d;
-      KDL::Vector e_rot = 0.5 * (R_err - R_err.Transpose()).GetVector();
+
+      Eigen::MatrixXd R_err_eigen = R_err.data;
+
+      KDL::Vector e_rot = 0.5 * (R_err_eigen - R_err_eigen.Transpose()).GetVector();
 
       Eigen::VectorXd e_x(6);
       for (int i = 0; i < 3; i++)
