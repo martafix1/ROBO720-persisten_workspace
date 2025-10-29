@@ -718,6 +718,7 @@ namespace MyController_namespace
         tolerance  // Tolerance default: 1e-5 1e-2
       );
     int ret = ik_solver_->CartToJnt(initial_guess, target, result);
+    miscData[8] = 0; 
     //RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
     if(ret != 0){
       RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[33m joint position as initial guess failed with code \033[0m %d, trying mid joint position", ret);
@@ -729,8 +730,10 @@ namespace MyController_namespace
       }
       RCLCPP_INFO(get_node()->get_logger(), "New initial guess: %s", output.c_str());
       ret = ik_solver_->CartToJnt(initial_guess, target, result);
+      miscData[8] = 1;
       if(ret != 0){
         RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[31m ik fallback failed with \033[0m %d returing", ret);
+        miscData[8] = 2;
       }
 
     }

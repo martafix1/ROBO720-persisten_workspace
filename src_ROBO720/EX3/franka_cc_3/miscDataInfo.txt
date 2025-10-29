@@ -1,7 +1,11 @@
 
 
 
+ex3_smartControllers():case1:
+miscData[4] = pathSteps_1;
+
 InverseK():
 miscData[5] = frameDiff;
 miscData[6] = tolerance;
 miscData[7] = ik_ee_target_diff;
+miscData[8] = 0/1/2, init_guess for IK,  0 = current joint init guess worked, 1 = fallback to center position, 2 = total IK failure
