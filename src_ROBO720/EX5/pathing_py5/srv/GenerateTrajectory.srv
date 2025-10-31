@@ -1,0 +1,21 @@
+# select which space should it run in. 
+bool joint_space
+bool task_space  
+
+# Joint space
+sensor_msgs/JointState start_joint_state
+sensor_msgs/JointState goal_joint_state
+
+# Task space
+trajectory_msgs/MultiDOFJointTrajectory start_joint_state
+trajectory_msgs/MultiDOFJointTrajectory goal_joint_state 
+
+float64 duration
+
+---
+# Response (contains both types for flexibility)
+trajectory_msgs/JointTrajectory joint_trajectory
+trajectory_msgs/MultiDOFJointTrajectory task_trajectory
+bool success
+int points # number of points generated in the trajectory
+string message
