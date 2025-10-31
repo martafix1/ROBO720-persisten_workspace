@@ -167,6 +167,15 @@ class MyController_class : public controller_interface::ControllerInterface {
   float position_lim_MIN[7] = {-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973};
   float position_centers[7] = {0};
   float position_ranges[7] = {0};
+
+  float velocity_lim_MIN[] = {-2.1750,-2.1750,-3.15,-3.15,-3.15,-3.15,-3.15};
+  float velocity_lim_MAX[] = {2.1750,2.1750,3.15,3.15,3.15,3.15,3.15 };
+
+  // arbitraly set, not actually in the robot (neither torqe nor acc) feel free to change
+  float acc_lim_MIN[] = {-2.1750,-2.1750,-3.15,-3.15,-3.15,-3.15,-3.15};
+  float acc_lim_MAX[] = {2.1750,2.1750,3.15,3.15,3.15,3.15,3.15};
+
+
   float PIreg_I[7] = {0};
   // added for RLCPP throtle
   rclcpp::Clock::SharedPtr node_clock_;
