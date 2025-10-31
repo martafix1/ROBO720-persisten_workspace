@@ -745,11 +745,11 @@ namespace MyController_namespace
 
   Eigen::VectorXd x_ddot_d = Kp_task.cwiseProduct(e_x) + Kd_task.cwiseProduct(-J_eigen * qdot_.data);
 
-  Eigen::VectorXd tau = J_eigen.transpose() * x_ddot_d;
+  Eigen::VectorXd velocityIhope = J_eigen.transpose() * x_ddot_d;
 
   for (int i = 0; i < num_joints; ++i)
-    tau_d_(i) = tau(i);
-}
+    qd_dot_(i) = velocityIhope(i);
+  }
 break;
 
 
