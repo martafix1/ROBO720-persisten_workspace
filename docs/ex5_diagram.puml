@@ -1,0 +1,42 @@
+@startuml
+
+
+object "InverseK()" as inverseK
+
+object taskSpaceObjective
+
+object "torque controller" as TQCtrl
+object "jointSpaceObjective"
+object "sum" as velSum
+
+object "jointStates" as jointStates
+object "calcRepulsion()" as repulse
+object "repulsivePotential" as repulsivePotential 
+
+
+object "torque command" as Tcmd
+object "simulation input" as Simin
+
+taskSpaceObjective ..> inverseK
+
+inverseK ..> jointSpaceObjective
+
+
+jointSpaceObjective ..> velSum : "velocity"
+jointSpaceObjective ..> TQCtrl : "position"
+
+
+jointStates ..> repulse : "position"
+
+
+repulsivePotential ..> velSum : "velocity1"
+
+velSum ..> TQCtrl : "velocity2"
+
+TQCtrl ..> Tcmd
+
+Tcmd ..> Simin
+
+
+
+@enduml
