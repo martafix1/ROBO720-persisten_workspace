@@ -99,7 +99,7 @@ namespace MyController_namespace
     else
     {
       rateLimiter_10_1 = 0;
-      ex3_smarterControllers(1); // 100Hz
+      ex3_smarterControllers(3); // 100Hz
     }
 
     e_.data = qd_.data - q_.data;
@@ -141,9 +141,9 @@ namespace MyController_namespace
     msg_tau_.data.clear();
     msg_miscData_.data.clear();
     // Fill the data arrays with the calculated values
-    for (int i = 0; i < num_joints; i++)
+    for (int i = 0; i < num_joints; i++)  
     {
-      msg_qd_.data.push_back(qdot_(i));
+      msg_qd_.data.push_back(qd_(i));
       msg_q_.data.push_back(q_(i));
       msg_e_.data.push_back(exertedEffort_(i));
       msg_tau_.data.push_back(tau_d_(i));
@@ -852,6 +852,48 @@ namespace MyController_namespace
     case 2: // taskSpaceController
       /* code */
       break;
+
+    case 3: // jointSpaceController
+    {
+      KDL::Frame target = tsop_kdlFrame;
+      
+      //setup necesities for torque controller
+      double w = 20; //rad/s
+      double damp = 1; // relative
+      // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
+      // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
+      Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      //Kp_.data.setConstant(w*w);
+      // Ki_.data.setConstant(0);
+      // Kd_.data.setConstant(w*damp*2);
+      qd_dot_.data.setConstant(0);
+      
+      
+      
+      double TaskSpaceError =  compareFrames(lastTarget,target);
+      miscData[0] = TaskSpaceError;
+      lastTarget = target;
+      if(TaskSpaceError > 1e-3) //run IK only when the objective point changes
+      {
+        KDL::JntArray result(num_joints);
+        int ret = InverseK(target, result);
+        if (ret != 0)
+        {
+          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.3: IK failed, breaking");
+          break;
+        }
+        for (int i = 0; i < num_joints; i++)
+        {
+          RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.3: IK success, joint %d = %f", i + 1, result(i));
+          qd_(i) = result(i);
+        }
+      }
+      
+      
+
+    }
+    break;
 
     default:
       for (int i = 0; i < num_joints; i++)

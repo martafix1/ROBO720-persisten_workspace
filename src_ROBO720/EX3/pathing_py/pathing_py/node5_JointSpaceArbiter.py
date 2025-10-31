@@ -3,7 +3,7 @@ from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectoryPoint
 from trajectory_msgs.msg import JointTrajectory, MultiDOFJointTrajectory,  MultiDOFJointTrajectoryPoint
 import math
-from geometry_msgs.msg import Transform, Twist,PoseStamped
+from geometry_msgs.msg import Transform, Twist, PoseStamped
 from tf_transformations import quaternion_from_euler
 from franka_cc_3.srv import ComputeIK
 
@@ -86,6 +86,9 @@ class JointSpaceArbiter(Node):
         self.objective_point.velocities.append(velocity)
         self.objective_point.accelerations.append(acceleration)
 
+    def IK_request_recieved(self):
+
+        pass
 
     def send_IK_request(self, objective_point):
         # Fill the PoseStamped message
@@ -103,7 +106,7 @@ class JointSpaceArbiter(Node):
         self.get_logger().info(f"Sending request")
         # Call the service
         future = self.computeIKClient.call_async(self.computeIKRequest)
-        rclpy.spin_until_future_complete(self, future,timeout_sec=5.0)
+        #rclpy.spin_until_future_complete(self, future,timeout_sec=5.0)
 
         if future.result() is not None:
             response = future.result()
