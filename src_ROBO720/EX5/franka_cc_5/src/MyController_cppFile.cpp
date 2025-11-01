@@ -91,6 +91,10 @@ namespace MyController_namespace
       // qd_ddot_(i) = req_acc[i];
     }
 
+    // required for potential fields:
+    qd_dot_.setZero();
+
+
     // rate limiter
     if (rateLimiter_10_1 < 10)
     {
@@ -101,6 +105,8 @@ namespace MyController_namespace
       rateLimiter_10_1 = 0;
       ex3_smarterControllers(3); // 100Hz
     }
+
+    ex5_potentialFields();
 
     e_.data = qd_.data - q_.data;
     e_dot_.data = qd_dot_.data - qdot_.data;
@@ -904,6 +910,52 @@ namespace MyController_namespace
       }
       break;
     }
+  }
+
+
+  // adds to qd_dot as output
+  // if future position is predicted to be between limit position and safety limit, the desiered speed is modified such that the future position should be half of it predicted.
+  void MyController_class::jointLimitRepulse(double freq)
+  {
+    
+    KLD::JntArray q_z(num_joints);
+
+    double safetyLimit_deg = 10;
+    double safetyLimit_rad = safetyLimit_deg*(3.14/180);
+
+    double decayRate = 1/2; // means the targeted position will be half the current distance to limit
+
+    double velCommandGain = 1;
+
+    for(int i = 0; i < num_joints; i++)
+    {
+      q_z(i) = q_(i) + qdot_(i)/freq;
+
+
+      double dist_max = std::abs(position_lim_MAX[i] -q_z(i));
+      double dist_min = std::abs(position_lim_MIN[i] -q_z(i));
+      
+      double desired_pos_step;
+      if((dist_max < safetyLimit_rad) && (qdot_(i) > 0 ))
+      {
+        desired_pos_step= (q_(i) - position_lim_MAX[i])*decayRate;
+      }
+      else if((dist_min < safetyLimit_rad) && (qdot_(i) < 0 ))
+      {
+        desired_pos_step= (q_(i) - position_lim_MIN[i])*decayRate;
+      }
+      
+      qd_dot_(i) += desired_pos_step*freq * velCommandGain;  
+
+
+    }
+    
+
+  }
+
+  void MyController_class::ex5_potentialFields(){
+    jointLimitRepulse(1000); //assumes 1kHz refresh rate
+
   }
 
 } // namespace MyController_namespace

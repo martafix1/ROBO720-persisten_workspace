@@ -188,6 +188,12 @@ class MyController_class : public controller_interface::ControllerInterface {
   int rateLimiter_10_1 = 0;
   int rateLimiter_10_2 = 0;
 
+
+  void ex5_potentialFields();
+  
+  void jointLimitRepulse(double freq);
+
+
 };
 
 }  // namespace MyController_namespace
