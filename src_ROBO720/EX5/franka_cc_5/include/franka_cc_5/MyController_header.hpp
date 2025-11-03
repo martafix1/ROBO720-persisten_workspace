@@ -134,6 +134,8 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::vector<urdf::JointConstSharedPtr> joint_urdfs_;  // joint urdfs
 
   // Publishers
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qd_dot_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qdot_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qd_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_q_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_e_;
@@ -143,6 +145,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   
 
   // messages
+
+  std_msgs::msg::Float64MultiArray msg_qd_dot;
+  std_msgs::msg::Float64MultiArray msg_q_dot;  
   std_msgs::msg::Float64MultiArray msg_qd_;
   std_msgs::msg::Float64MultiArray msg_q_;  
   std_msgs::msg::Float64MultiArray msg_e_;
@@ -191,7 +196,9 @@ class MyController_class : public controller_interface::ControllerInterface {
 
   void ex5_potentialFields();
   
-  void jointLimitRepulse(double freq);
+  void jointLimitRepulse();
+  //void viscoseField();
+  bool useJointSpaceInputs = true;
 
 
 };

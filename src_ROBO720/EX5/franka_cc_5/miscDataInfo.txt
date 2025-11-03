@@ -9,3 +9,8 @@ miscData[5] = frameDiff;
 miscData[6] = tolerance;
 miscData[7] = ik_ee_target_diff;
 miscData[8] = 0/1/2, init_guess for IK,  0 = current joint init guess worked, 1 = fallback to center position, 2 = total IK failure
+
+
+jointLimitRepulse():
+miscData[12] = q_z(0);
+miscData[13] = qd_dot_(0);

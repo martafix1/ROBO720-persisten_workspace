@@ -31,6 +31,7 @@ class JointTrajectoryPointPublisher(Node):
             self.step = 0
             self.moving = True
             self.amplitude = 0.6
+            self.waveType = "sine";
 
             self.running = True                    
             self._start_input_thread()             
@@ -60,9 +61,14 @@ class JointTrajectoryPointPublisher(Node):
             else:
                 self.step = self.step + 1
 
-        positions = (range_of_motion/2)*waveState*self.amplitude + center_pos
-        velocities = (range_of_motion/2)*d_waveState*self.amplitude 
-        accelerations = (range_of_motion/2)*dd_waveState*self.amplitude 
+        if self.waveType == "sine":
+            positions = (range_of_motion/2)*waveState*self.amplitude + center_pos
+            velocities = (range_of_motion/2)*d_waveState*self.amplitude 
+            accelerations = (range_of_motion/2)*dd_waveState*self.amplitude 
+        elif self.waveType == "square":
+            positions = (range_of_motion/2)*np.sign(waveState)*self.amplitude + center_pos
+            velocities = np.zeros_like(range_of_motion)
+            accelerations = np.zeros_like(range_of_motion)
 
         # Target positions for all 7 joints (in radians)
         # You can change these values!
@@ -94,7 +100,7 @@ class JointTrajectoryPointPublisher(Node):
 
     def _handle_command(self, cmd: str):
         if cmd == "help":
-            self.get_logger().info("help, status, stop, start, period <s>, ampl <1> ")
+            self.get_logger().info("help, status, stop, start, period <s>, ampl <1>, wave <sine/square> ")
 
         elif cmd == "status":
             self.get_logger().info(f" Motion period: {self.motionPeriod}, Motion amplitude: {self.amplitude}, Moving: {self.moving}, Step: {self.step}, cmd freq: {1/self.timerPeriod} [Hz]")
@@ -130,7 +136,20 @@ class JointTrajectoryPointPublisher(Node):
                 self.get_logger().info(f"Motion amplitude set to {new_amplitude}.")
             except Exception as e:
                 self.get_logger().warn(f"Invalid period command: {e}")
-        
+
+        elif cmd.startswith("wave "):
+            try:
+                _, val = cmd.split()
+                if(val.startswith("sine")):
+                    self.waveType = "sine"
+                elif(val.startswith("square")):
+                    self.waveType = "square"
+                else:
+                    self.get_logger().warn(f"Invalid wavetype value: {val}")
+                
+                self.get_logger().info(f"Motion wavetype set to {self.waveType} ")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid wavetype command: {e}")
         else:
             self.get_logger().warn(f"Unknown command: '{cmd}'")
 

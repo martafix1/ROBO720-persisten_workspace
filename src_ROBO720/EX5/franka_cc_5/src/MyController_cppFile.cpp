@@ -86,13 +86,23 @@ namespace MyController_namespace
       qdot_(i) = velocity_interface_values_(i);
       exertedEffort_(i) = effort_interface_values_(i);
 
-      // qd_(i) = req_pos[i];
-      // qd_dot_(i) = req_vel[i];
-      // qd_ddot_(i) = req_acc[i];
+      if(useJointSpaceInputs){
+        qd_(i) = req_pos[i];
+        qd_dot_(i) = req_vel[i];
+        qd_ddot_(i) = req_acc[i];
+
+        double w = 2; //rad/s
+        double damp = 1; // relative
+
+        Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+        Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+
+      }
+
     }
 
     // required for potential fields:
-    qd_dot_.setZero();
+    qd_dot_.data.setZero();
 
 
     // rate limiter
@@ -103,7 +113,9 @@ namespace MyController_namespace
     else
     {
       rateLimiter_10_1 = 0;
-      ex3_smarterControllers(3); // 100Hz
+      if(!useJointSpaceInputs){
+        ex3_smarterControllers(3); // 100Hz
+      } 
     }
 
     ex5_potentialFields();
@@ -141,6 +153,8 @@ namespace MyController_namespace
     }
 
     // Clear the data arrays
+    msg_qd_dot.data.clear();
+    msg_q_dot.data.clear();  
     msg_qd_.data.clear();
     msg_q_.data.clear();
     msg_e_.data.clear();
@@ -149,6 +163,8 @@ namespace MyController_namespace
     // Fill the data arrays with the calculated values
     for (int i = 0; i < num_joints; i++)  
     {
+      msg_qd_dot.data.push_back(qd_dot_(i));
+      msg_q_dot.data.push_back(qdot_(i));
       msg_qd_.data.push_back(qd_(i));
       msg_q_.data.push_back(q_(i));
       msg_e_.data.push_back(exertedEffort_(i));
@@ -161,6 +177,9 @@ namespace MyController_namespace
     }
 
     // Publish data to topics
+    pub_qd_dot_ ->publish(msg_qd_dot);
+    pub_qdot_ ->publish(msg_q_dot);
+
     pub_qd_->publish(msg_qd_);
     pub_q_->publish(msg_q_);
     pub_e_->publish(msg_e_);
@@ -209,6 +228,9 @@ namespace MyController_namespace
       // auto_declare<double>("my_custom_parameter", 1.0);
 
       // Create publishers for the desired and current joint positions, velocities, and accelerations
+      pub_qd_dot_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd_dot", 1000);
+      pub_qdot_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q_dot", 1000);
+
       pub_qd_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd", 1000);
       pub_q_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q", 1000);
       pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 1000);
@@ -516,6 +538,9 @@ namespace MyController_namespace
     // }
 
     // Activate the publishers
+    pub_qd_dot_->on_activate();
+    pub_qdot_->on_activate();
+
     pub_qd_->on_activate();
     pub_q_->on_activate();
     pub_e_->on_activate();
@@ -533,6 +558,16 @@ namespace MyController_namespace
     RCLCPP_INFO(get_node()->get_logger(), "IK service created");
 
     RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
+    if(useJointSpaceInputs)
+    {
+      RCLCPP_WARN(get_node()->get_logger(), " \033[44m controller expects \033[0m jointspace inputs");
+    }
+    if(!useJointSpaceInputs)
+    {
+      RCLCPP_WARN(get_node()->get_logger(), " \033[44m controller expects \033[0m taskspace inputs");
+    }
+
+
     return CallbackReturn::SUCCESS;
   }
 
@@ -915,46 +950,63 @@ namespace MyController_namespace
 
   // adds to qd_dot as output
   // if future position is predicted to be between limit position and safety limit, the desiered speed is modified such that the future position should be half of it predicted.
-  void MyController_class::jointLimitRepulse(double freq)
+  void MyController_class::jointLimitRepulse()
   {
     
-    KLD::JntArray q_z(num_joints);
+    KDL::JntArray q_z(num_joints);
+    double safetyLimit_deg =  10;//10;
+    double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
 
-    double safetyLimit_deg = 10;
-    double safetyLimit_rad = safetyLimit_deg*(3.14/180);
 
-    double decayRate = 1/2; // means the targeted position will be half the current distance to limit
-
-    double velCommandGain = 1;
+    double viscoseConstant = 50;
 
     for(int i = 0; i < num_joints; i++)
     {
-      q_z(i) = q_(i) + qdot_(i)/freq;
 
+    
 
-      double dist_max = std::abs(position_lim_MAX[i] -q_z(i));
-      double dist_min = std::abs(position_lim_MIN[i] -q_z(i));
-      
-      double desired_pos_step;
-      if((dist_max < safetyLimit_rad) && (qdot_(i) > 0 ))
-      {
-        desired_pos_step= (q_(i) - position_lim_MAX[i])*decayRate;
+      // double dist_max = std::abs(position_lim_MAX[i] -q_z(i));
+      // double dist_min = std::abs(position_lim_MIN[i] -q_z(i));
+      double distLim, viscosity, repulse,direction;
+      if (qdot_(i) > 0) {
+            direction = 1.0;
+            distLim = q_(i) - (position_lim_MAX[i] - safetyLimit_rad);
+      } 
+      else if (qdot_(i) < 0) {
+            direction = -1.0;
+            distLim = q_(i) - (position_lim_MIN[i] + safetyLimit_rad);
+      } 
+      else {
+            direction = 0.0;
+            distLim = 0.0;
       }
-      else if((dist_min < safetyLimit_rad) && (qdot_(i) < 0 ))
-      {
-        desired_pos_step= (q_(i) - position_lim_MIN[i])*decayRate;
-      }
-      
-      qd_dot_(i) += desired_pos_step*freq * velCommandGain;  
 
+      // distLim being positive means the field is active
+      if (distLim > 0) {
+          viscosity = (distLim * viscoseConstant) * (distLim * viscoseConstant);
+      } 
+      else {
+          viscosity = 0.0;
+      }
+
+      if (qdot_(i) * direction > 0) {  // heading into the limit
+          repulse = -qdot_(i) * viscosity;
+      }
+
+      qd_ddot_(i) = repulse;
 
     }
+    // miscData[12] = q_z(0);
+    miscData[13] = qd_dot_(0);
     
 
   }
 
   void MyController_class::ex5_potentialFields(){
-    jointLimitRepulse(1000); //assumes 1kHz refresh rate
+    jointLimitRepulse(); //assumes 1kHz refresh rate
+
+
+
 
   }
 
