@@ -2,6 +2,10 @@
 //
 // Licensed under the MIT License.
 
+
+// #define DEBUG_IK
+// #define DEBUG_EX3
+
 #pragma once
 #include <string>
 #include <controller_interface/controller_interface.hpp>
@@ -127,6 +131,27 @@ class MyController_class : public controller_interface::ControllerInterface {
   KDL::Frame lastTarget = KDL::Frame::Identity();
 
 
+  // for taskspace repulsion
+  struct pointRep{
+    Eigen::Vector3d x;
+    double dist0;
+    double dist1;
+    double dist10; // read only 
+    double k;
+    double a;
+    double b;
+
+    pointRep(const Eigen::Vector3d& x_, double d0, double d1,double k)
+        : x(x_), dist0(d0), dist1(d1), dist10(0), k(k), a(0), b(0)
+    {
+        MyController_class::taskSpaceRepulse_calcRepulse(*this);
+    }
+  }
+
+  std::vector<pointRep> repulsionPoints;
+
+
+
   // joint handles for URDF
   std::vector<std::string> joint_names_;  // joint names
   std::string root_name, tip_name;  //this coz why not hardcode it
@@ -197,7 +222,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   void ex5_potentialFields();
   
   void jointLimitRepulse();
-  //void viscoseField();
+  void taskSpaceRepulse();
+  static void taskSpaceRepulse_calcRepulse(pointRep &point);
+  void taskSpaceRepulse_initHardcodedStuff();
   bool useJointSpaceInputs = true;
 
 

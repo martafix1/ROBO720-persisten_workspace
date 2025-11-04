@@ -66,6 +66,8 @@ namespace MyController_namespace
     tip_name = "panda_link7";
     root_name = "base";
 
+    taskSpaceRepulse_initHardcodedStuff();
+
     std::cout << "\033[35m ItDidWork: \033[0m constructor" << std::endl;
   }
 
@@ -707,18 +709,18 @@ namespace MyController_namespace
     initial_guess = q_;
     //initial_guess = joint_center_;
 
+
+    #ifdef DEBUG_IK
     std::string output;
-
     for (int i = 0; i < num_joints; ++i)
-    {
-      output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";
-    }
+      {output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";}
     RCLCPP_INFO(get_node()->get_logger(), "Initial guess: %s", output.c_str());
-
     RCLCPP_INFO(get_node()->get_logger(), "Target: x: %f, y: %f, z: %f", target.p.x(), target.p.y(), target.p.z());
     double roll, pitch, yaw;
     target.M.GetRPY(roll, pitch, yaw);
     RCLCPP_INFO(get_node()->get_logger(), "Target: roll: %f, pitch: %f, yaw: %f", roll, pitch, yaw);
+    #endif
+
 
     KDL::Frame ee_frame;
     int fk_result = fk_solver_->JntToCart(q_, ee_frame);
@@ -730,12 +732,14 @@ namespace MyController_namespace
       double y = ee_frame.p.y();
       double z = ee_frame.p.z();
 
-      double roll, pitch, yaw;
+    #ifdef DEBUG_IK
+     double roll, pitch, yaw;
       ee_frame.M.GetRPY(roll, pitch, yaw);
-
       RCLCPP_INFO(get_node()->get_logger(), "EE pose: x=%.3f y=%.3f z=%.3f roll=%.3f pitch=%.3f yaw=%.3f",
                   x, y, z, roll, pitch, yaw);
-    }
+    #endif
+
+    } 
     else
     {
       RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
@@ -745,7 +749,9 @@ namespace MyController_namespace
     // EE dist heuristics
     double frameDiff = compareFrames(ee_frame,target); 
     double tolerance = std::min((frameDiff/5)*(frameDiff/5),frameDiff/50);
-    RCLCPP_INFO(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
+    #ifdef DEBUG_IK
+      RCLCPP_INFO(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
+    #endif
     miscData[5] = frameDiff;
     miscData[6] = tolerance;
 
@@ -762,18 +768,23 @@ namespace MyController_namespace
     miscData[8] = 0; 
     //RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
     if(ret != 0){
-      RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[33m joint position as initial guess failed with code \033[0m %d, trying mid joint position", ret);
+      
       initial_guess = joint_center_;
-      output = "";
-      for (int i = 0; i < num_joints; ++i)
-      {
-        output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";
-      }
-      RCLCPP_INFO(get_node()->get_logger(), "New initial guess: %s", output.c_str());
+      
+      #ifdef DEBUG_IK
+        RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[33m joint position as initial guess failed with code \033[0m %d, trying mid joint position", ret);
+        output = "";
+        for (int i = 0; i < num_joints; ++i)
+          {output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";}
+        RCLCPP_INFO(get_node()->get_logger(), "New initial guess: %s", output.c_str());
+      #endif
+      
       ret = ik_solver_->CartToJnt(initial_guess, target, result);
       miscData[8] = 1;
       if(ret != 0){
+        #ifdef DEBUG_IK
         RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[31m ik fallback failed with \033[0m %d returing", ret);
+        #endif
         miscData[8] = 2;
       }
 
@@ -877,13 +888,17 @@ namespace MyController_namespace
         int ret = InverseK(nextStep, result);
         if (ret != 0)
         {
-          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
+          #ifdef DEBUG_EX3
+            RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
+          #endif
           break;
         }
 
         for (int i = 0; i < num_joints; i++)
         {
-          RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
+          #ifdef DEBUG_EX3
+            RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
+          #endif
           qd_(i) = result(i);
         }
       }
@@ -921,12 +936,16 @@ namespace MyController_namespace
         int ret = InverseK(target, result);
         if (ret != 0)
         {
-          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.3: IK failed, breaking");
+          #ifdef DEBUG_EX3
+            RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.3: IK failed, breaking");
+          #endif
           break;
         }
         for (int i = 0; i < num_joints; i++)
         {
-          RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.3: IK success, joint %d = %f", i + 1, result(i));
+          #ifdef DEBUG_EX3
+            RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.3: IK success, joint %d = %f", i + 1, result(i));
+          #endif
           qd_(i) = result(i);
         }
       }
@@ -1010,10 +1029,31 @@ namespace MyController_namespace
 
   }
 
+  void MyController_class::taskSpaceRepulse(){
+
+
+  }
+
+  void MyController_class::taskSpaceRepulse_calcRepulse(pointRep &point){
+    // assuming the linear version : U = 1/2 *b1*(1./d_-1/a1); 
+    //a1= x0
+    //b1= (x0*x1)/(x0 - x1)
+    //x1_10 = 1/(1/a1 + 10/b1)
+    point.a = point.dist0;
+    point.b = (point.dist0*point.dist1)/((point.dist0-point.dist1));
+    point.dist10 = 1/(1/point.a + 10/point.b);
+
+  }
+
+  void MyController_class::taskSpaceRepulse_initHardcodedStuff(){
+    repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.5), 0.5, 0.3, 1);
+    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.5), 0.5, 0.3, 1);
+
+  }
+
   void MyController_class::ex5_potentialFields(){
     jointLimitRepulse(); //assumes 1kHz refresh rate
-
-
+    taskSpaceRepulse();
 
 
   }
