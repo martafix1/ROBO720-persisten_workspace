@@ -903,11 +903,11 @@ namespace MyController_namespace
       double damp = 1; // relative
       // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
       // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
-      Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      //Kp_.data.setConstant(w*w);
+      //Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      //Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      Kp_.data.setConstant(w*w);
       // Ki_.data.setConstant(0);
-      // Kd_.data.setConstant(w*damp*2);
+       Kd_.data.setConstant(w*damp*2);
       qd_dot_.data.setConstant(0);
       
       
@@ -953,8 +953,8 @@ namespace MyController_namespace
   void MyController_class::jointLimitRepulse()
   {
     
-    KDL::JntArray q_z(num_joints);
-    double safetyLimit_deg =  10;//10;
+    //KDL::JntArray q_z(num_joints);
+    double safetyLimit_deg =  10.0;//10;
     double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
 
 
@@ -974,7 +974,7 @@ namespace MyController_namespace
       } 
       else if (qdot_(i) < 0) {
             direction = -1.0;
-            distLim = q_(i) - (position_lim_MIN[i] + safetyLimit_rad);
+            distLim = -q_(i) + (position_lim_MIN[i] + safetyLimit_rad);
       } 
       else {
             direction = 0.0;
@@ -983,7 +983,7 @@ namespace MyController_namespace
 
       // distLim being positive means the field is active
       if (distLim > 0) {
-          viscosity = (distLim * viscoseConstant) * (distLim * viscoseConstant);
+          viscosity = (distLim * viscoseConstant);
       } 
       else {
           viscosity = 0.0;
@@ -993,11 +993,19 @@ namespace MyController_namespace
           repulse = -qdot_(i) * viscosity;
       }
 
-      qd_ddot_(i) = repulse;
+      qd_dot_(i) = repulse;
+
+      if(i == 0){
+        miscData[12] = distLim;
+        miscData[13] = direction;
+        miscData[14] = viscosity;
+        miscData[15] = repulse;
+
+      }
 
     }
     // miscData[12] = q_z(0);
-    miscData[13] = qd_dot_(0);
+    // miscData[13] = qd_dot_(0);
     
 
   }

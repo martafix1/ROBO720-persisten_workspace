@@ -12,3 +12,12 @@ This leads me to an idea of viscose field, causing torque against direction of m
 For this to work however the field viscosity itself must be position dependent. 
 
 The linear viscosity fields seems good, there is a bit of a step but it seems to reduce the velocity suficiently.
+
+After fixing a mistake with the distance to "headed-to" limit, the viscose fields seems to work. 
+
+Results:
+This was run for the command being desired velocity
+There seems to be no apparent difference between the behaviour for regulator omega = 20 and omega= 44 (44 comes from the w increase for lower joint)
+The slowdown seems still bit abrupt. 
+
+Continue work:

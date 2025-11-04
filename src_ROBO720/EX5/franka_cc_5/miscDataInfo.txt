@@ -12,5 +12,10 @@ miscData[8] = 0/1/2, init_guess for IK,  0 = current joint init guess worked, 1 
 
 
 jointLimitRepulse():
-miscData[12] = q_z(0);
-miscData[13] = qd_dot_(0);
+if(i == 0){
+    miscData[12] = distLim;
+    miscData[13] = direction;
+    miscData[14] = viscosity;
+    miscData[15] = repulse;
+
+    }
