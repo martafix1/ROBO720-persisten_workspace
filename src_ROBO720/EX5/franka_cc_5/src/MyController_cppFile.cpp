@@ -903,11 +903,11 @@ namespace MyController_namespace
       double damp = 1; // relative
       // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
       // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
-      //Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      //Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      Kp_.data.setConstant(w*w);
+      Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      // Kp_.data.setConstant(w*w);
       // Ki_.data.setConstant(0);
-       Kd_.data.setConstant(w*damp*2);
+      // Kd_.data.setConstant(w*damp*2);
       qd_dot_.data.setConstant(0);
       
       
@@ -958,7 +958,7 @@ namespace MyController_namespace
     double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
 
 
-    double viscoseConstant = 50;
+    double viscoseConstant = 10;
 
     for(int i = 0; i < num_joints; i++)
     {
@@ -990,7 +990,7 @@ namespace MyController_namespace
       }
 
       if (qdot_(i) * direction > 0) {  // heading into the limit
-          repulse = -qdot_(i) * viscosity;
+          repulse = (-1)*((qdot_(i) * qdot_(i))*direction + qdot_(i))   * viscosity;
       }
 
       qd_dot_(i) = repulse;

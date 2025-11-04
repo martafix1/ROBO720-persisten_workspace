@@ -20,4 +20,6 @@ This was run for the command being desired velocity
 There seems to be no apparent difference between the behaviour for regulator omega = 20 and omega= 44 (44 comes from the w increase for lower joint)
 The slowdown seems still bit abrupt. 
 
-Continue work:
+Switching to acceleration commands just results in actaully abrupt stop, as the command is not scaled by the 2* damp*w constant, this would need retuning
+
+Trying out quadratic velocity dependence, keeping the viscosity itself linear. Tried the full quadratic (v^2 + v), trying just quadratic (v^2). The quadratic term needs to be corrected for direction. 
