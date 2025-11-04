@@ -27,11 +27,11 @@ class JointTrajectoryPointPublisher(Node):
             self.timerPeriod = 0.001
             self.timer = self.create_timer(self.timerPeriod, self.timer_callback)
             
-            self.motionPeriod = 5
+            self.motionPeriod = 20
             self.step = 0
             self.moving = True
-            self.amplitude = 0.6
-            self.waveType = "sine";
+            self.amplitude = 1.2
+            self.waveType = "square";
 
             self.running = True                    
             self._start_input_thread()             
@@ -86,6 +86,8 @@ class JointTrajectoryPointPublisher(Node):
         thread.start()
 
     def _input_loop(self):
+        self._handle_command("help")
+        self._handle_command("status")
         print("Input loop started. Inpud commands (help for help)")
         while self.running:
             try:
@@ -103,7 +105,7 @@ class JointTrajectoryPointPublisher(Node):
             self.get_logger().info("help, status, stop, start, period <s>, ampl <1>, wave <sine/square> ")
 
         elif cmd == "status":
-            self.get_logger().info(f" Motion period: {self.motionPeriod}, Motion amplitude: {self.amplitude}, Moving: {self.moving}, Step: {self.step}, cmd freq: {1/self.timerPeriod} [Hz]")
+            self.get_logger().info(f" Motion period: {self.motionPeriod}, Motion amplitude: {self.amplitude}, Wavetype {self.waveType} , Moving: {self.moving}, Step: {self.step}, cmd freq: {1/self.timerPeriod} [Hz]")
 
         elif cmd == "stop":
             if self.moving == False:
