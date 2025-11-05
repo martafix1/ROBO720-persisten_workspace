@@ -1046,8 +1046,24 @@ namespace MyController_namespace
       double dist = (EE-rp.x).norm();
 
       if(dist > rp.x0)
+      {
+        continue;
+      }
 
 
+
+
+      double U = 0.5*rp.b *(1.0/dist-1.0/rp.a); 
+      
+      if((EE-rp.x).squaredNorm()<= 0)
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: distance to point %d is zero, cannot repulse.",i);
+        continue;
+      }
+      Eigen::Vector3d repulseVector = (EE-rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
+      
+      repulseVector *= U;
+      
 
     }
 
