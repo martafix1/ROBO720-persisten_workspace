@@ -144,7 +144,7 @@ class MyController_class : public controller_interface::ControllerInterface {
     pointRep(const Eigen::Vector3d& x_, double d0, double d1,double k)
         : x(x_), dist0(d0), dist1(d1), dist10(0), k(k), a(0), b(0)
     {
-        MyController_class::taskSpaceRepulse_calcRepulse(*this);
+        MyController_class::taskSpaceRepulse_calcRepulseCoefs(*this);
     }
   }
 
@@ -223,7 +223,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   
   void jointLimitRepulse();
   void taskSpaceRepulse();
-  static void taskSpaceRepulse_calcRepulse(pointRep &point);
+  static void taskSpaceRepulse_calcRepulseCoefs(pointRep &point);
   void taskSpaceRepulse_initHardcodedStuff();
   bool useJointSpaceInputs = true;
 

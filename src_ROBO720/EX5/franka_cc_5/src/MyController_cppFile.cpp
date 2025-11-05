@@ -1030,11 +1030,32 @@ namespace MyController_namespace
   }
 
   void MyController_class::taskSpaceRepulse(){
+    KDL::Frame ee_frame;
+    int fk_result = fk_solver_->JntToCart(q_, ee_frame);
+    if (fk_result != 0)
+    {
+      RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: FK failed for some reason");
+      return;
+    }
+    Eigen::Vector3d EE(ee_frame.p.x(),ee_frame.p.y(),ee_frame.p.z());
+
+    for (size_t i = 0; i < repulsionPoints.size(); ++i) {
+      const auto& rp = repulsionPoints[i];
+
+      //dist
+      double dist = (EE-rp.x).norm();
+
+      if(dist > rp.x0)
+
+
+
+    }
+
 
 
   }
 
-  void MyController_class::taskSpaceRepulse_calcRepulse(pointRep &point){
+  static void MyController_class::taskSpaceRepulse_calcRepulseCoefs(pointRep &point){
     // assuming the linear version : U = 1/2 *b1*(1./d_-1/a1); 
     //a1= x0
     //b1= (x0*x1)/(x0 - x1)
