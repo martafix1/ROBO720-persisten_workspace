@@ -1,674 +1,81 @@
-// Copyright (c) 2025 Tampere University, Autonomous Mobile Machines
-//
-// Licensed under the MIT License.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
+// Task_Space_Controller.cpp
+// Implements an operational-space (task-space) torque controller
 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+#include "task_space_controller.hpp"
 
-#include <franka_cc_3/Task_Space_Controller.hpp>
-
-#include <cassert>
-#include <cmath>
-#include <exception>
+#include <algorithm>
+#include <chrono>
+#include <memory>
 #include <string>
+#include <vector>
 
-#include "rclcpp/qos.hpp"
-#include "rclcpp/time.hpp"
-#include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
-#include "rclcpp_lifecycle/state.hpp"
+#include <kdl/frames_io.hpp>
+#include <kdl/jntarray.hpp>
+#include <kdl/jacobian.hpp>
+#include <kdl/frames.hpp>
 
-#include <Eigen/Eigen>
+#include <rclcpp/parameter_client.hpp>
+#include <rclcpp/qos.hpp>
+
+#include <trajectory_msgs/msg/multi_dof_joint_trajectory.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+
+#include <pluginlib/class_list_macros.hpp>
 
 namespace arm_controllers
 {
 
+  using std::placeholders::_1;
+
+
   controller_interface::InterfaceConfiguration
-  ComputedTorqueController::command_interface_configuration() const
+  Task_Space_Controller::command_interface_configuration() const
   {
     controller_interface::InterfaceConfiguration config;
     config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
 
-    // Add the effort control interfaces for the joints
-    for (int i = 1; i <= num_joints; ++i)
+    for (const auto &name : joint_names_)
     {
-      config.names.push_back("panda_joint" + std::to_string(i) + "/effort");
+      config.names.push_back(name + "/effort");
     }
-
     return config;
   }
 
   controller_interface::InterfaceConfiguration
-  ComputedTorqueController::state_interface_configuration() const
+  Task_Space_Controller::state_interface_configuration() const
   {
     controller_interface::InterfaceConfiguration config;
     config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
 
-    // Add the position and velocity state interfaces for the joints
-    for (int i = 1; i <= num_joints; ++i)
+    for (const auto &name : joint_names_)
     {
-      config.names.push_back("panda_joint" + std::to_string(i) + "/position");
-      config.names.push_back("panda_joint" + std::to_string(i) + "/velocity");
+      config.names.push_back(name + "/position");
+      config.names.push_back(name + "/velocity");
     }
-
     return config;
   }
 
-  controller_interface::return_type ComputedTorqueController::update(
-      const rclcpp::Time & /*time*/,
-      const rclcpp::Duration & /*period*/)
+  // on_init
+  CallbackReturn Task_Space_Controller::on_init()
   {
-
-    // Update the joint states
-    updateJointStates();
-
-    // double dt = period.seconds();
-    t = t + 0.001;
-
-    // save position and velocity values to q_ and qdot_ for each joint
-    for (int i = 0; i < num_joints; i++)
-    {
-      q_(i) = position_interface_values_(i);
-      qdot_(i) = velocity_interface_values_(i);
-    }
-
-    // Calculate the desired Trajecoty in Joint Space
-    for (size_t i = 0; i < num_joints; i++)
-    {
-      qd_ddot_(i) = -M_PI * M_PI / 4 * 45 * KDL::deg2rad * sin(M_PI / 2 * t);
-      qd_dot_(i) = M_PI / 2 * 45 * KDL::deg2rad * cos(M_PI / 2 * t);
-      qd_(i) = 45 * KDL::deg2rad * sin(M_PI / 2 * t);
-    }
-
-    // Motion Controller in Joint Space:
-    // - Error Definition in Joint Space
-    e_.data = qd_.data - q_.data;
-    e_dot_.data = qd_dot_.data - qdot_.data;
-    e_int_.data = qd_.data - q_.data;
-
-    // Compute model(M,C,G)
-    id_solver_->JntToMass(q_, M_);
-    id_solver_->JntToCoriolis(q_, qdot_, C_);
-    id_solver_->JntToGravity(q_, G_);
-
-    // Convert KDL::JntArray and KDL::JntSpaceInertiaMatrix to Eigen matrices
-    Eigen::MatrixXd M_eigen = M_.data;
-    Eigen::VectorXd qd_ddot_eigen = qd_ddot_.data;
-    Eigen::VectorXd Kp_eigen = Kp_.data;
-    Eigen::VectorXd e_eigen = e_.data;
-    Eigen::VectorXd Kd_eigen = Kd_.data;
-    Eigen::VectorXd e_dot_eigen = e_dot_.data;
-
-    // DEBUG: statements to print matrix dimensions
-
-    // RCLCPP_INFO(get_node()->get_logger(), "M_ dimensions: %ld x %ld", M_eigen.rows(), M_eigen.cols());
-    // RCLCPP_INFO(get_node()->get_logger(), "qd_ddot_ size: %ld", qd_ddot_eigen.size());
-    // RCLCPP_INFO(get_node()->get_logger(), "Kp_ size: %ld", Kp_eigen.size());
-    // RCLCPP_INFO(get_node()->get_logger(), "e_ size: %ld", e_eigen.size());
-    // RCLCPP_INFO(get_node()->get_logger(), "Kd_ size: %ld", Kd_eigen.size());
-    // RCLCPP_INFO(get_node()->get_logger(), "e_dot_ size: %ld", e_dot_eigen.size());
-
-    // RCLCPP_INFO(get_node()->get_logger(), "q_ size: %ld", q_.data.size());
-    // RCLCPP_INFO(get_node()->get_logger(), "qdot_ size: %ld", qdot_.data.size());
-    // RCLCPP_INFO(get_node()->get_logger(), "qd_ size: %ld", qd_.data.size());
-
-    // RCLCPP_INFO(get_node()->get_logger(), "q_ data: %f, %f, %f, %f, %f, %f, %f, %f", q_.data[0], q_.data[1], q_.data[2], q_.data[3], q_.data[4], q_.data[5], q_.data[6], q_.data[7]);
-
-    // if (M_eigen.rows() != num_joints)
-    // {
-    //   RCLCPP_ERROR(get_node()->get_logger(), "CHECK DIMENSIONS");
-    //   return controller_interface::return_type::ERROR;
-    // }
-
-    // --- TASK SPACE CONTROL ---
-
-    // Current end-effector pose
-    fk_solver->JntToCart(q_, F_);
-
-    // Pose error in task space (Twist: vx vy vz wx wy wz)
-    Xerr = KDL::diff(F_, Fd_); // Fd_ = desired frame already defined
-
-    // Jacobian
-    KDL::Jacobian J(num_joints);
-    jac_solver->JntToJac(q_, J);
-
-    // Jdot*qdot  (task-space acceleration from Jacobian derivative)
-    KDL::Jacobian Jdot(num_joints);
-    jacdot_solver = false
-    if (jacdot_solver)
-    {
-      if (jacdot_solver->JntToJacDot(q_, qdot_, Jdot) == 0)
-      {
-        have_jdot = true;
-      }
-    }
-
-    // fallback: numerical Jdot if solver not available
-    static KDL::Jacobian J_prev = J;
-    if (!have_jdot)
-    {
-      double dt = 0.001; // control period
-      for (unsigned r = 0; r < 6; r++)
-        for (unsigned c = 0; c < num_joints; c++)
-          Jdot(r, c) = (J(r, c) - J_prev(r, c)) / dt;
-    }
-    J_prev = J;
-
-    // Compute dx = J * qdot
-    KDL::Twist dx = KDL::Twist::Zero();
-    for (unsigned i = 0; i < 6; i++)
-      for (unsigned j = 0; j < num_joints; j++)
-        dx[i] += J(i, j) * qdot_(j);
-
-    // desired twist & acceleration
-    KDL::Twist xd_ddot = KDL::Twist::Zero(); // feedforward accel = 0
-
-    // Task-space PD law:  xr_ddot = xd_ddot + Kd*(Vd - dx) + Kp*(Xerr)
-    KDL::Twist xr_ddot;
-    for (int i = 0; i < 6; i++)
-    {
-      xr_ddot[i] = xd_ddot[i] + Kd_task_(i) * (Vd_(i) - dx[i]) + Kp_task_(i) * (Xerr[i]);
-    }
-
-    // Compute (xr_ddot - Jdot*qdot)
-    KDL::Twist Jdot_qdot = KDL::Twist::Zero();
-    for (unsigned i = 0; i < 6; i++)
-      for (unsigned j = 0; j < num_joints; j++)
-        Jdot_qdot[i] += Jdot(i, j) * qdot_(j);
-
-    KDL::Twist rhs = KDL::Twist::Zero();
-    for (int i = 0; i < 6; i++)
-      rhs[i] = xr_ddot[i] - Jdot_qdot[i];
-
-    // Solve for ddq_r:  J * ddq_r = rhs   
-    Eigen::MatrixXd J_e = J.data;
-    Eigen::MatrixXd Jt = J_e.transpose();
-    Eigen::VectorXd rhs_e(6);
-    for (int i = 0; i < 6; i++)
-      rhs_e(i) = rhs[i];
-
-    double lambda = 1e-6;
-    Eigen::VectorXd ddq_r = Jt * ((J_e * Jt + lambda * Eigen::MatrixXd::Identity(6, 6)).ldlt().solve(rhs_e));
-
-    // Computed torque: τ = M*ddq_r + C + G
-    Eigen::VectorXd tau = M_.data * ddq_r + C_.data + G_.data;
-
-    for (int i = 0; i < num_joints; i++)
-    {
-      // For torque command:
-      command_interfaces_[i].set_value(tau_d_(i));
-      // For no control command (zero torque for the joints):
-      // command_interfaces_[i].set_value(0);
-    }
-
-    // save_data
-    // Simulation time (unit: sec)
-    SaveData_[0] = t;
-
-    // Desired position in joint space (unit: rad)
-    for (int i = 0; i <)
-
-      SaveData_[1] = qd_(0);
-    SaveData_[2] = qd_(1);
-    SaveData_[3] = qd_(2);
-    SaveData_[4] = qd_(3);
-    SaveData_[5] = qd_(4);
-    SaveData_[6] = qd_(5);
-    SaveData_[7] = qd_(6);
-
-    // Desired velocity in joint space (unit: rad/s)
-    SaveData_[8] = qd_dot_(0);
-    SaveData_[9] = qd_dot_(1);
-    SaveData_[10] = qd_dot_(2);
-    SaveData_[11] = qd_dot_(3);
-    SaveData_[12] = qd_dot_(4);
-    SaveData_[13] = qd_dot_(5);
-    SaveData_[14] = qd_dot_(6);
-
-    // Desired acceleration in joint space (unit: rad/s^2)
-    SaveData_[15] = qd_ddot_(0);
-    SaveData_[16] = qd_ddot_(1);
-    SaveData_[17] = qd_ddot_(2);
-    SaveData_[18] = qd_ddot_(3);
-    SaveData_[19] = qd_ddot_(4);
-    SaveData_[20] = qd_ddot_(5);
-    SaveData_[21] = qd_ddot_(6);
-
-    // Actual position in joint space (unit: rad)
-    SaveData_[22] = q_(0);
-    SaveData_[23] = q_(1);
-    SaveData_[24] = q_(2);
-    SaveData_[25] = q_(3);
-    SaveData_[26] = q_(4);
-    SaveData_[27] = q_(5);
-    SaveData_[28] = q_(6);
-
-    // Actual velocity in joint space (unit: rad/s)
-    SaveData_[29] = qdot_(0);
-    SaveData_[30] = qdot_(1);
-    SaveData_[31] = qdot_(2);
-    SaveData_[32] = qdot_(3);
-    SaveData_[33] = qdot_(4);
-    SaveData_[34] = qdot_(5);
-    SaveData_[35] = qdot_(6);
-
-    // Error position in joint space (unit: rad)
-    SaveData_[36] = e_(0);
-    SaveData_[37] = e_(1);
-    SaveData_[38] = e_(2);
-    SaveData_[39] = e_(3);
-    SaveData_[40] = e_(4);
-    SaveData_[41] = e_(5);
-    SaveData_[42] = e_(6);
-
-    // Error velocity in joint space (unit: rad/s)
-    SaveData_[43] = e_dot_(0);
-    SaveData_[44] = e_dot_(1);
-    SaveData_[45] = e_dot_(2);
-    SaveData_[46] = e_dot_(3);
-    SaveData_[47] = e_dot_(4);
-    SaveData_[48] = e_dot_(5);
-    SaveData_[49] = e_dot_(6);
-
-    // Error intergal value in joint space (unit: rad*sec)
-    SaveData_[50] = e_int_(0);
-    SaveData_[51] = e_int_(1);
-    SaveData_[52] = e_int_(2);
-    SaveData_[53] = e_int_(3);
-    SaveData_[54] = e_int_(4);
-    SaveData_[55] = e_int_(5);
-    SaveData_[56] = e_int_(6);
-
-    // Clear the data arrays
-    msg_qd_.data.clear();
-    msg_q_.data.clear();
-    msg_e_.data.clear();
-    msg_SaveData_.data.clear();
-
-    // Fill the data arrays with the calculated values
-    for (int i = 0; i < num_joints; i++)
-    {
-      msg_qd_.data.push_back(qd_(i));
-      msg_q_.data.push_back(q_(i));
-      msg_e_.data.push_back(e_(i));
-    }
-    // Fill the data arrays with the calculated values
-    for (int i = 0; i < SaveDataMax; i++)
-    {
-      msg_SaveData_.data.push_back(SaveData_[i]);
-    }
-
-    // Publish data to topics
-    pub_qd_->publish(msg_qd_);
-    pub_q_->publish(msg_q_);
-    pub_e_->publish(msg_e_);
-    pub_SaveData_->publish(msg_SaveData_);
-
-    // print_state every 100 iterations (0.1 sec) (uncomment to print)
-
-    // static int count = 0;
-    // if (count > 99)
-    // {
-    //   printf("*********************************************************\n\n");
-    //   printf("*** Simulation Time (unit: sec)  ***\n");
-    //   printf("t = %f\n", t);
-    //   printf("\n");
-
-    //   printf("*** Desired State in Joint Space (unit: deg) ***\n");
-    //   printf("qd_(0): %f, ", qd_(0)*R2D);
-    //   printf("qd_(1): %f, ", qd_(1)*R2D);
-    //   printf("qd_(2): %f, ", qd_(2)*R2D);
-    //   printf("qd_(3): %f, ", qd_(3)*R2D);
-    //   printf("qd_(4): %f, ", qd_(4)*R2D);
-    //   printf("qd_(5): %f, ", qd_(5)*R2D);
-    //   printf("qd_(6): %f\n", qd_(6)*R2D);
-    //   printf("\n");
-
-    //   printf("*** Actual State in Joint Space (unit: deg) ***\n");
-    //   printf("q_(0): %f, ", q_(0) * R2D);
-    //   printf("q_(1): %f, ", q_(1) * R2D);
-    //   printf("q_(2): %f, ", q_(2) * R2D);
-    //   printf("q_(3): %f, ", q_(3) * R2D);
-    //   printf("q_(4): %f, ", q_(4) * R2D);
-    //   printf("q_(5): %f, ", q_(5) * R2D);
-    //   printf("q_(6): %f\n", q_(6) * R2D);
-    //   printf("\n");
-
-    //   printf("*** Joint Space Error (unit: deg)  ***\n");
-    //   printf("%f, ", R2D * e_(0));
-    //   printf("%f, ", R2D * e_(1));
-    //   printf("%f, ", R2D * e_(2));
-    //   printf("%f, ", R2D * e_(3));
-    //   printf("%f, ", R2D * e_(4));
-    //   printf("%f, ", R2D * e_(5));
-    //   printf("%f\n", R2D * e_(6));
-    //   printf("\n");
-
-    //   count = 0;
-    // }
-    // count++;
-
-    return controller_interface::return_type::OK;
-  }
-
-  CallbackReturn ComputedTorqueController::on_init()
-  {
-
-    RCLCPP_INFO(get_node()->get_logger(), "Robot Initialization (on_init) started");
-
-    // Initialize the joint names, gains, and the number of joints
-    try
-    {
-      auto_declare<std::vector<std::string>>("joints", {});
-      auto_declare<std::vector<double>>("p_gains", {});
-      auto_declare<std::vector<double>>("i_gains", {});
-      auto_declare<std::vector<double>>("d_gains", {});
-    }
-    catch (const std::exception &e)
-    {
-      fprintf(stderr, "Exception thrown during init stage (on_init) with message: %s \n", e.what());
-      return CallbackReturn::ERROR;
-    }
-
-    M_.resize(num_joints);
-    C_.resize(num_joints);
-    G_.resize(num_joints);
-
-    // Set the gravity vector
-    gravity_ = KDL::Vector::Zero();
-    gravity_(2) = -9.81;
-
-    // Initialize the KDL variables
-    tau_d_.data = Eigen::VectorXd::Zero(num_joints);
-    qd_.data = Eigen::VectorXd::Zero(num_joints);
-    qd_dot_.data = Eigen::VectorXd::Zero(num_joints);
-    qd_ddot_.data = Eigen::VectorXd::Zero(num_joints);
-    q_.data = Eigen::VectorXd::Zero(num_joints);
-    qdot_.data = Eigen::VectorXd::Zero(num_joints);
-    e_.data = Eigen::VectorXd::Zero(num_joints);
-    e_dot_.data = Eigen::VectorXd::Zero(num_joints);
-    e_int_.data = Eigen::VectorXd::Zero(num_joints);
-
-    // Create publishers for the desired and current joint positions, velocities, and accelerations
-    pub_qd_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd", 1000);
-    pub_q_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q", 1000);
-    pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 1000);
-    pub_SaveData_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("SaveData", 1000);
-
-    RCLCPP_INFO(get_node()->get_logger(), "Robot Initialization (on_init) done");
-
-    return CallbackReturn::SUCCESS;
-  }
-
-  CallbackReturn ComputedTorqueController::on_configure(
-      const rclcpp_lifecycle::State & /*previous_state*/)
-  {
-
-    RCLCPP_INFO(get_node()->get_logger(), "Robot Configuration (on_configure) started");
-
-    // Get the robot description parameter
-    auto parameters_client =
-        std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "/robot_state_publisher");
-    parameters_client->wait_for_service();
-    auto future = parameters_client->get_parameters({"robot_description"});
-    auto result = future.get();
-
-    // Check if the robot description was retrieved successfully
-    if (!result.empty())
-    {
-      robot_description_ = result[0].value_to_string();
-    }
-    else
-    {
-      RCLCPP_ERROR(get_node()->get_logger(), "Failed to get robot_description parameter.");
-      return CallbackReturn::FAILURE;
-    }
-
-    // Get the joint names from the parameter server
-    joint_names_ = auto_declare<std::vector<std::string>>("joints", joint_names_);
-    if (joint_names_.empty())
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "joint_names_ not set");
-      return CallbackReturn::FAILURE;
-    }
-    // Check if there are the correct number of joint names
-    if (joint_names_.size() != static_cast<uint>(num_joints))
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "joint_names_ should be of size %d but is of size %ld",
-                   num_joints, joint_names_.size());
-      return CallbackReturn::FAILURE;
-    }
-
-    // Get the node's namespace
-    Kp_.resize(num_joints);
-    Kd_.resize(num_joints);
-    Ki_.resize(num_joints);
-
-    // Get the gains from the parameter server
-    std::vector<double> Kp(num_joints), Ki(num_joints), Kd(num_joints);
-    auto p_gains = get_node()->get_parameter("p_gains").as_double_array();
-    auto i_gains = get_node()->get_parameter("i_gains").as_double_array();
-    auto d_gains = get_node()->get_parameter("d_gains").as_double_array();
-
-    // Check if the gains were retrieved successfully
-    if (p_gains.empty())
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "p_gains parameter not set");
-      return CallbackReturn::FAILURE;
-    }
-    if (p_gains.size() != static_cast<uint>(num_joints))
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "p_gains should be of size %d but is of size %ld",
-                   num_joints, p_gains.size());
-      return CallbackReturn::FAILURE;
-    }
-    if (i_gains.empty())
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "i_gains parameter not set");
-      return CallbackReturn::FAILURE;
-    }
-    if (i_gains.size() != static_cast<uint>(num_joints))
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "i_gains should be of size %d but is of size %ld",
-                   num_joints, i_gains.size());
-      return CallbackReturn::FAILURE;
-    }
-    if (d_gains.empty())
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "d_gains parameter not set");
-      return CallbackReturn::FAILURE;
-    }
-    if (d_gains.size() != static_cast<uint>(num_joints))
-    {
-      RCLCPP_FATAL(get_node()->get_logger(), "d_gains should be of size %d but is of size %ld",
-                   num_joints, d_gains.size());
-      return CallbackReturn::FAILURE;
-    }
-
-    // Set the gains for the controller
-    for (int i = 0; i < num_joints; ++i)
-    {
-      Kp_(i) = p_gains.at(i);
-      Kp[i] = p_gains.at(i);
-      Ki_(i) = i_gains.at(i);
-      Ki[i] = i_gains.at(i);
-      Kd_(i) = d_gains.at(i);
-      Kd[i] = d_gains.at(i);
-    }
-
-    // Get the URDF model and the joint URDF objects
-    urdf::Model urdf;
-    if (!urdf.initString(robot_description_))
-    {
-      RCLCPP_ERROR(get_node()->get_logger(), "Failed to parse urdf file");
-      return CallbackReturn::ERROR;
-    }
-    else
-    {
-      RCLCPP_INFO(get_node()->get_logger(), "Found robot_description");
-    }
-
-    // Get the joint URDF objects
-    for (int i = 0; i < num_joints; i++)
-    {
-      urdf::JointConstSharedPtr joint_urdf = urdf.getJoint(joint_names_[i]);
-      if (!joint_urdf)
-      {
-        RCLCPP_ERROR(get_node()->get_logger(), "Could not find joint '%s' in urdf", joint_names_[i].c_str());
-        return CallbackReturn::ERROR;
-      }
-      joint_urdfs_.push_back(joint_urdf);
-    }
-
-    // Get the KDL tree from the robot description
-    if (!kdl_parser::treeFromUrdfModel(urdf, kdl_tree_))
-    {
-      RCLCPP_ERROR(get_node()->get_logger(), "Failed to construct kdl tree");
-      return CallbackReturn::ERROR;
-    }
-    else
-    {
-      RCLCPP_INFO(get_node()->get_logger(), "Constructed kdl tree");
-    }
-
-    // Get the root and tip link names from the parameter server
-    // If the parameter is not found, return an error
-    std::string root_name, tip_name;
-    if (get_node()->has_parameter("root_link"))
-    {
-      root_name = get_node()->get_parameter("root_link").as_string();
-      RCLCPP_INFO(get_node()->get_logger(), "Found root link name form yaml: %s", root_name.c_str());
-    }
-    else
-    {
-      RCLCPP_ERROR(get_node()->get_logger(), "Could not find root link name");
-      return CallbackReturn::ERROR;
-    }
-    if (get_node()->has_parameter("tip_link"))
-    {
-      tip_name = get_node()->get_parameter("tip_link").as_string();
-      RCLCPP_INFO(get_node()->get_logger(), "Found tip link name form yaml: %s", tip_name.c_str());
-    }
-    else
-    {
-      RCLCPP_ERROR(get_node()->get_logger(), "Could not find tip link name");
-      return CallbackReturn::ERROR;
-    }
-
-    // Get the KDL chain from the KDL tree
-    // if kdl tree has no chain from root to tip, return error
-    if (!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
-    {
-      RCLCPP_ERROR_STREAM(get_node()->get_logger(), "Failed to get KDL chain from tree: ");
-      RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  " << root_name << " --> " << tip_name);
-      RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  Tree has " << kdl_tree_.getNrOfJoints() << " joints");
-      RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  Tree has " << kdl_tree_.getNrOfSegments() << " segments");
-      RCLCPP_ERROR_STREAM(get_node()->get_logger(), "  The segments are:");
-
-      KDL::SegmentMap segment_map = kdl_tree_.getSegments();
-      KDL::SegmentMap::iterator it;
-
-      for (it = segment_map.begin(); it != segment_map.end(); it++)
-      {
-        RCLCPP_ERROR(get_node()->get_logger(), "    %s", std::string((*it).first).c_str());
-      }
-
-      return CallbackReturn::ERROR;
-    }
-    else
-    {
-      RCLCPP_INFO(get_node()->get_logger(), "Got kdl chain");
-
-      // debug: print kdl tree and kdl chain
-      RCLCPP_INFO(get_node()->get_logger(), "  %s --> %s", root_name.c_str(), tip_name.c_str());
-      RCLCPP_INFO(get_node()->get_logger(), "  Tree has %d joints", kdl_tree_.getNrOfJoints());
-      RCLCPP_INFO(get_node()->get_logger(), "  Tree has %d segments", kdl_tree_.getNrOfSegments());
-      RCLCPP_INFO(get_node()->get_logger(), "  The kdl_tree_ segments are:");
-
-      // Print the segments of the KDL tree
-      KDL::SegmentMap segment_map = kdl_tree_.getSegments();
-      KDL::SegmentMap::iterator it;
-      for (it = segment_map.begin(); it != segment_map.end(); it++)
-      {
-        RCLCPP_INFO(get_node()->get_logger(), "    %s", std::string((*it).first).c_str());
-      }
-      RCLCPP_INFO(get_node()->get_logger(), "  Chain has %d joints", kdl_chain_.getNrOfJoints());
-      RCLCPP_INFO(get_node()->get_logger(), "  Chain has %d segments", kdl_chain_.getNrOfSegments());
-      RCLCPP_INFO(get_node()->get_logger(), "  The kdl_chain_ segments are:");
-      for (unsigned int i = 0; i < kdl_chain_.getNrOfSegments(); i++)
-      {
-        const KDL::Segment &segment = kdl_chain_.getSegment(i);
-        RCLCPP_INFO(get_node()->get_logger(), "    %s", segment.getName().c_str());
-      }
-    }
-
-    // Create the KDL chain dyn param solver
-    id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
-
-    M_.resize(kdl_chain_.getNrOfJoints());
-    C_.resize(kdl_chain_.getNrOfJoints());
-    G_.resize(kdl_chain_.getNrOfJoints());
-
-    // print kdltree, kdlchain, jointnames, jointurdfs for learning purposes
-    fprintf(stderr, "Number of segments in kdl_tree_: %d\n", kdl_tree_.getNrOfSegments());
-    fprintf(stderr, "Number of joints in kdl_chain_: %d\n", kdl_chain_.getNrOfJoints());
-    fprintf(stderr, "Joint names in joint_names_: ");
-    for (int i = 0; i < num_joints; i++)
-    {
-      fprintf(stderr, "%s ", joint_names_[i].c_str());
-    }
-    fprintf(stderr, "\n");
-
-    RCLCPP_INFO(get_node()->get_logger(), "Robot Configuration (on_configure) done");
-
-    jac_solver = std::make_shared<KDL::ChainJntToJacSolver>(chain);
-    jacdot_solver = std::make_shared<KDL::ChainJntToJacDotSolver>(chain);
-
-    Kp_task_.resize(6);
-    Kd_task_.resize(6);
-    for (int i = 0; i < 6; i++)
-    {
-      Kp_task_(i) = 50.0;
-      Kd_task_(i) = 10.0;
-    }
-
-    return CallbackReturn::SUCCESS;
-  }
-
-  CallbackReturn ComputedTorqueController::on_activate(
-      const rclcpp_lifecycle::State & /*previous_state*/)
-  {
-
-    // Initialize the joint states
-    updateJointStates();
-
-    // Initialize the KDL variables
-    M_.data.setZero();
-    C_.data.setZero();
-    G_.data.setZero();
-
-    t = 0.0; // Initialize the simulation time variable
-
-    // Initialize the variables
+    RCLCPP_INFO(get_node()->get_logger(), "Task_Space_Controller::on_init()");
+
+    // Default joint names (you can override via parameter later)
+    joint_names_.clear();
+    joint_names_.push_back("panda_joint1");
+    joint_names_.push_back("panda_joint2");
+    joint_names_.push_back("panda_joint3");
+    joint_names_.push_back("panda_joint4");
+    joint_names_.push_back("panda_joint5");
+    joint_names_.push_back("panda_joint6");
+    joint_names_.push_back("panda_joint7");
+
+    // Initialize KDL arrays
+    q_.resize(num_joints);
+    qdot_.resize(num_joints);
     qd_.resize(num_joints);
     qd_dot_.resize(num_joints);
     qd_ddot_.resize(num_joints);
-    q_.resize(num_joints);
-    qdot_.resize(num_joints);
     e_.resize(num_joints);
     e_dot_.resize(num_joints);
     e_int_.resize(num_joints);
@@ -681,61 +88,391 @@ namespace arm_controllers
     Ki_.resize(num_joints);
     Kd_.resize(num_joints);
 
-    for (int i = 0; i < SaveDataMax; i++)
+    Kp_task_.resize(6);
+    Kd_task_.resize(6);
+
+    // sensible defaults for task gains (can be replaced by parameters)
+    for (int i = 0; i < 6; ++i)
     {
-      SaveData_[i] = 0.0;
+      Kp_task_(i) = 200.0;
+      Kd_task_(i) = 40.0;
     }
 
-    // Activate the publishers
-    pub_qd_->on_activate();
-    pub_q_->on_activate();
-    pub_e_->on_activate();
-    pub_SaveData_->on_activate();
+    // Save data
+    t = 0.0;
+    have_jdot = false;
 
+    // Initialize message containers
+    msg_qd_.data.reserve(num_joints);
+    msg_q_.data.reserve(num_joints);
+    msg_e_.data.reserve(num_joints);
+    msg_SaveData_.data.reserve(SaveDataMax);
+
+    RCLCPP_INFO(get_node()->get_logger(), "Task_Space_Controller::on_init() done");
     return CallbackReturn::SUCCESS;
   }
 
-  void ComputedTorqueController::updateJointStates()
+  // on_configure
+
+  CallbackReturn Task_Space_Controller::on_configure(const rclcpp_lifecycle::State &)
   {
-    // Pre-check array size to avoid bounds checking in loop
-    if (state_interfaces_.size() != 2 * num_joints)
+    RCLCPP_INFO(get_node()->get_logger(), "Task_Space_Controller::on_configure()");
+
+    // Optionally read joint names from parameter server (if set)
+    if (get_node()->has_parameter("joints"))
     {
-      RCLCPP_ERROR(get_node()->get_logger(), "Invalid number of state interfaces");
+      auto param = get_node()->get_parameter("joints");
+      if (param.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+      {
+        joint_names_ = param.as_string_array();
+        if (static_cast<int>(joint_names_.size()) != num_joints)
+        {
+          RCLCPP_ERROR(get_node()->get_logger(), "Parameter 'joints' must have %d entries", num_joints);
+          return CallbackReturn::ERROR;
+        }
+      }
+    }
+
+    // Robot description (URDF) retrieval using AsyncParametersClient to robot_state_publisher
+    try
+    {
+      auto parameters_client =
+          std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "/robot_state_publisher");
+      if (!parameters_client->wait_for_service(std::chrono::milliseconds(500)))
+      {
+        RCLCPP_WARN(get_node()->get_logger(),
+                    "robot_state_publisher parameter service not available; trying direct param on this node");
+      }
+      // Try both places: robot_state_publisher param first, then local param
+      std::vector<rclcpp::Parameter> params;
+      if (parameters_client->service_is_ready())
+      {
+        auto fut = parameters_client->get_parameters({"robot_description"});
+        auto res = fut.get();
+        if (!res.empty())
+        {
+          robot_description_ = res[0].value_to_string();
+        }
+      }
+
+      if (robot_description_.empty() && get_node()->has_parameter("robot_description"))
+      {
+        robot_description_ = get_node()->get_parameter("robot_description").as_string();
+      }
+    }
+    catch (const std::exception &ex)
+    {
+      (void)ex;
+      RCLCPP_WARN(get_node()->get_logger(), "Could not fetch robot_description parameter: %s", ex.what());
+    }
+
+    if (robot_description_.empty())
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "robot_description is empty. You must set robot_description.");
+      return CallbackReturn::ERROR;
+    }
+
+    // Build KDL tree from URDF
+    if (!kdl_parser::treeFromString(robot_description_, kdl_tree_))
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "Failed to construct KDL tree from URDF");
+      return CallbackReturn::ERROR;
+    }
+
+    // Read root and tip link names from parameters or fallback to common Panda links
+    std::string root_name = "panda_link0";
+    std::string tip_name = "panda_link8";
+    if (get_node()->has_parameter("root_link"))
+      root_name = get_node()->get_parameter("root_link").as_string();
+    if (get_node()->has_parameter("tip_link"))
+      tip_name = get_node()->get_parameter("tip_link").as_string();
+
+    // Get chain
+    if (!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
+    {
+      RCLCPP_ERROR_STREAM(get_node()->get_logger(),
+                          "Failed to get KDL chain from '" << root_name << "' to '" << tip_name << "'");
+      return CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(get_node()->get_logger(), "KDL chain: %s -> %s (joints: %d)",
+                root_name.c_str(), tip_name.c_str(), kdl_chain_.getNrOfJoints());
+
+    // Gravity vector
+    gravity_ = KDL::Vector::Zero();
+    gravity_(2) = -9.81;
+
+    // KDL solvers
+    try
+    {
+      id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
+      fk_solver_ = std::make_unique<KDL::ChainFkSolverPos_recursive>(kdl_chain_);
+      jac_solver = std::make_shared<KDL::ChainJntToJacSolver>(kdl_chain_);
+      jacdot_solver = std::make_shared<KDL::ChainJntToJacDotSolver>(kdl_chain_);
+    }
+    catch (const std::exception &ex)
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "Failed to create KDL solvers: %s", ex.what());
+      return CallbackReturn::ERROR;
+    }
+
+    // Resize dynamics arrays
+    M_.resize(num_joints);
+    C_.resize(num_joints);
+    G_.resize(num_joints);
+
+    // Publishers (lifecycle publishers — create and activate in on_activate)
+    pub_qd_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd", 10);
+    pub_q_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q", 10);
+    pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 10);
+    pub_SaveData_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("SaveData", 10);
+
+    // Subscription to task-space objective: MultiDOFJointTrajectory expected,
+    // we take the first transform of the first point (if exists)
+    taskspace_objective_subscriber = get_node()->create_subscription<trajectory_msgs::msg::MultiDOFJointTrajectory>(
+        "/taskspace_objective",
+        10,
+        [this](const trajectory_msgs::msg::MultiDOFJointTrajectory::SharedPtr msg)
+        {
+          if (!msg || msg->points.empty() || msg->points[0].transforms.empty())
+          {
+            RCLCPP_WARN(get_node()->get_logger(), "Received empty taskspace objective");
+            return;
+          }
+          const auto &tf = msg->points[0].transforms[0];
+          KDL::Vector pos(tf.translation.x, tf.translation.y, tf.translation.z);
+          KDL::Rotation rot = KDL::Rotation::Quaternion(tf.rotation.x, tf.rotation.y, tf.rotation.z, tf.rotation.w);
+          std::lock_guard<std::mutex> guard(req_traj_point_mutex_);
+          Fd_ = KDL::Frame(rot, pos);
+          // optionally reset path planner counters etc.
+        });
+
+    RCLCPP_INFO(get_node()->get_logger(), "Task_Space_Controller::on_configure() done");
+    return CallbackReturn::SUCCESS;
+  }
+
+  // on_activate
+
+  CallbackReturn Task_Space_Controller::on_activate(const rclcpp_lifecycle::State &)
+  {
+    RCLCPP_INFO(get_node()->get_logger(), "Task_Space_Controller::on_activate()");
+
+    // If lifecycle publishers were created as lifecycle ones by the node, activate them
+    try
+    {
+      pub_qd_->on_activate();
+      pub_q_->on_activate();
+      pub_e_->on_activate();
+      pub_SaveData_->on_activate();
+    }
+    catch (...)
+    {
+      // In some environments the publisher returned is not a lifecycle publisher;
+      // ignore exceptions from on_activate to keep compatibility.
+    }
+
+    // initialize previous Jacobian for numerical Jdot fallback
+    static bool Jprev_initialized = false;
+    if (!Jprev_initialized)
+    {
+      KDL::Jacobian J(num_joints);
+      jac_solver->JntToJac(q_, J); // q_ is probably zero initially
+      J_prev = J;
+      Jprev_initialized = true;
+    }
+
+    // zero integrator
+    for (int i = 0; i < num_joints; ++i)
+      e_int_(i) = 0.0;
+
+    t = 0.0;
+    have_jdot = false;
+
+    RCLCPP_INFO(get_node()->get_logger(), "Task_Space_Controller activated");
+    return CallbackReturn::SUCCESS;
+  }
+
+  // updateJointStates
+  void Task_Space_Controller::updateJointStates()
+  {
+    // state_interfaces_ contains [pos0, vel0, pos1, vel1, ...] because state_interface_configuration
+    if (state_interfaces_.size() != static_cast<size_t>(2 * num_joints))
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "Unexpected number of state interfaces: %zu (expected %d)",
+                   state_interfaces_.size(), 2 * num_joints);
       return;
     }
 
-    // Get the current joint positions and velocities
-    auto *interfaces = state_interfaces_.data();
-    for (size_t i = 0; i < num_joints; ++i)
+    for (size_t i = 0; i < static_cast<size_t>(num_joints); ++i)
     {
-      // Access interfaces directly with pointer arithmetic
-      const auto &position_interface = interfaces[2 * i];
-      const auto &velocity_interface = interfaces[2 * i + 1];
+      const auto &pos_if = state_interfaces_[2 * i];
+      const auto &vel_if = state_interfaces_[2 * i + 1];
 
-      // Interface name comparison
-      const auto &pos_name = position_interface.get_interface_name();
-      const auto &vel_name = velocity_interface.get_interface_name();
-
-      if (pos_name != "position")
-      {
-        RCLCPP_ERROR(get_node()->get_logger(), "Expected position interface, but got %s",
-                     pos_name.c_str());
-        return;
-      }
-      if (vel_name != "velocity")
-      {
-        RCLCPP_ERROR(get_node()->get_logger(), "Expected velocity interface, but got %s",
-                     vel_name.c_str());
-        return;
-      }
-
-      // Direct value assignment
-      position_interface_values_(i) = position_interface.get_value();
-      velocity_interface_values_(i) = velocity_interface.get_value();
+      q_(i) = pos_if.get_value();
+      qdot_(i) = vel_if.get_value();
     }
   }
 
+  // update (control loop)
+  controller_interface::return_type Task_Space_Controller::update(
+      const rclcpp::Time & /*time*/,
+      const rclcpp::Duration &period)
+  {
+    // Basic timing
+    double dt = period.seconds();
+    if (dt <= 0.0)
+      dt = 1e-3;
+    t += dt;
+
+    // Ensure correct number of command interfaces
+    if (command_interfaces_.size() != static_cast<size_t>(num_joints))
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "Unexpected number of command interfaces: %zu (expected %d)",
+                   command_interfaces_.size(), num_joints);
+      return controller_interface::return_type::ERROR;
+    }
+
+    // 1) Read joint states
+    updateJointStates();
+
+    // 2) FK: current end-effector pose
+    if (fk_solver_->JntToCart(q_, F_) < 0)
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed");
+      return controller_interface::return_type::ERROR;
+    }
+
+    // 3) Jacobian
+    KDL::Jacobian J(num_joints);
+    if (jac_solver->JntToJac(q_, J) < 0)
+    {
+      RCLCPP_ERROR(get_node()->get_logger(), "Jacobian computation failed");
+      return controller_interface::return_type::ERROR;
+    }
+
+    // 4) Compute Jdot (try analytic solver; fallback to numerical)
+    KDL::Jacobian Jdot(num_joints);
+    have_jdot = false;
+    if (jacdot_solver)
+    {
+      if (jacdot_solver->JntToJacDot(q_, qdot_, Jdot) == 0)
+      {
+        have_jdot = true;
+      }
+    }
+
+    if (!have_jdot)
+    {
+      // numerical differentiation (using previous J_prev)
+      for (unsigned r = 0; r < 6; ++r)
+      {
+        for (unsigned c = 0; c < static_cast<unsigned>(num_joints); ++c)
+        {
+          Jdot(r, c) = (J(r, c) - J_prev(r, c)) / dt;
+        }
+      }
+    }
+    J_prev = J; // save for next iter
+
+    // 5) Task error (pose)
+    KDL::Twist Xerr = KDL::diff(F_, Fd_); // 6D: (vx vy vz wx wy wz) small-error twist
+
+    // 6) Current task velocity dx = J * qdot
+    KDL::Twist dx = KDL::Twist::Zero();
+    for (unsigned i = 0; i < 6; ++i)
+    {
+      for (unsigned j = 0; j < static_cast<unsigned>(num_joints); ++j)
+      {
+        dx[i] += J(i, j) * qdot_(j);
+      }
+    }
+
+    // 7) Desired task velocity and accel (assuming zero feedforward)
+    KDL::Twist Vd = KDL::Twist::Zero();
+    KDL::Twist xd_ddot = KDL::Twist::Zero();
+
+    // 8) Task-space PD: xr_ddot = xd_ddot + Kd*(Vd - dx) + Kp*(Xerr)
+    KDL::Twist xr_ddot = KDL::Twist::Zero();
+    for (int i = 0; i < 6; ++i)
+    {
+      double kp = Kp_task_(i);
+      double kd = Kd_task_(i);
+      xr_ddot[i] = xd_ddot[i] + kd * (Vd[i] - dx[i]) + kp * (Xerr[i]);
+    }
+
+    // 9) Compute Jdot*qdot
+    KDL::Twist Jdot_qdot = KDL::Twist::Zero();
+    for (unsigned i = 0; i < 6; ++i)
+      for (unsigned j = 0; j < static_cast<unsigned>(num_joints); ++j)
+        Jdot_qdot[i] += Jdot(i, j) * qdot_(j);
+
+    // rhs = xr_ddot - Jdot*qdot
+    Eigen::VectorXd rhs_e(6);
+    for (int i = 0; i < 6; ++i)
+      rhs_e(i) = xr_ddot[i] - Jdot_qdot[i];
+
+    // 10) Convert Jacobian to Eigen
+    Eigen::MatrixXd J_e = J.data;           // 6 x n
+    Eigen::MatrixXd Jt_e = J_e.transpose(); // n x 6
+
+    // Damped least squares inverse: ddq_r = J^T * (J * J^T + lambda I)^-1 * rhs
+    double lambda = 1e-6;
+    Eigen::MatrixXd JJt = J_e * Jt_e; // 6x6
+    Eigen::MatrixXd reg = JJt + lambda * Eigen::MatrixXd::Identity(6, 6);
+
+    Eigen::VectorXd sol6;
+    // Solve regularized system (6x6)
+    sol6 = reg.ldlt().solve(rhs_e);        // 6x1
+    Eigen::VectorXd ddq_r_e = Jt_e * sol6; // n x 1
+
+    // 11) Dynamics: M, C, G
+    id_solver_->JntToMass(q_, M_);
+    id_solver_->JntToCoriolis(q_, qdot_, C_);
+    id_solver_->JntToGravity(q_, G_);
+
+    Eigen::MatrixXd M_e = M_.data; // n x n
+    Eigen::VectorXd C_e = C_.data; // n
+    Eigen::VectorXd G_e = G_.data; // n
+
+    // 12) Computed torque
+    Eigen::VectorXd tau_e = M_e * ddq_r_e + C_e + G_e;
+
+    // 13) Send torques to command interfaces
+    for (size_t i = 0; i < static_cast<size_t>(num_joints); ++i)
+    {
+      command_interfaces_[i].set_value(tau_e(static_cast<int>(i)));
+    }
+
+    // 14) Publish debugging arrays
+    msg_qd_.data.clear();
+    msg_q_.data.clear();
+    msg_e_.data.clear();
+    msg_SaveData_.data.clear();
+
+    for (int i = 0; i < num_joints; ++i)
+    {
+      msg_qd_.data.push_back(qd_(i)); // in our design qd_ is unused here, but keep for visibility
+      msg_q_.data.push_back(q_(i));
+      msg_e_.data.push_back((double)Xerr[i < 3 ? i : (i - 3)]); // approximate 6->3/rot split, keep size manageable
+    }
+
+    // Save some data into SaveData_ (you can extend as needed)
+    SaveData_[0] = t;
+    for (int i = 0; i < num_joints && i + 1 < SaveDataMax; ++i)
+      SaveData_[i + 1] = q_(i);
+
+    for (int i = 0; i < SaveDataMax; ++i)
+      msg_SaveData_.data.push_back(SaveData_[i]);
+
+    // publish (lifecycle publishers may need activation; safe to call publish)
+    pub_qd_->publish(msg_qd_);
+    pub_q_->publish(msg_q_);
+    pub_e_->publish(msg_e_);
+    pub_SaveData_->publish(msg_SaveData_);
+
+    return controller_interface::return_type::OK;
+  }
+
 } // namespace arm_controllers
-#include "pluginlib/class_list_macros.hpp"
-PLUGINLIB_EXPORT_CLASS(arm_controllers::ComputedTorqueController,
+
+PLUGINLIB_EXPORT_CLASS(arm_controllers::Task_Space_Controller,
                        controller_interface::ControllerInterface)

@@ -246,10 +246,7 @@ namespace MyController_namespace
           }
 
           taskspace_objective_point = msg->points[0];
-<<<<<<< Updated upstream
-=======
           RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
->>>>>>> Stashed changes
         });
 
     auto parameters_client =
@@ -607,10 +604,6 @@ namespace MyController_namespace
     RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "Service done");
   }
 
-<<<<<<< Updated upstream
-  // Internal helper function to compute IK for a given target frame.
-  // Uses a joint-center initial guess and logs diagnostic information
-=======
   void MyController_class::TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps)
   {
 
@@ -654,18 +647,12 @@ namespace MyController_namespace
     } // feel free to implement something better
   }
 
->>>>>>> Stashed changes
   int MyController_class::InverseK(KDL::Frame target, KDL::JntArray &result)
   {
 
     KDL::JntArray initial_guess(num_joints);
-<<<<<<< Updated upstream
-    // initial_guess = q_;
-    initial_guess = joint_center_;
-=======
     initial_guess = q_;
     // initial_guess = joint_center_;
->>>>>>> Stashed changes
 
     std::string output;
 
@@ -701,10 +688,6 @@ namespace MyController_namespace
       RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
     }
 
-<<<<<<< Updated upstream
-    int ret = ik_solver_->CartToJnt(initial_guess, target, result);
-    RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
-=======
     // EE dist heuristics
     double frameDiff = compareFrames(ee_frame, target);
     double tolerance = std::min((frameDiff / 5) * (frameDiff / 5), frameDiff / 50);
@@ -751,14 +734,10 @@ namespace MyController_namespace
     }
     double ik_ee_target_diff = compareFrames(ik_ee_result, target);
     miscData[7] = ik_ee_target_diff;
->>>>>>> Stashed changes
 
     return ret;
   }
 
-<<<<<<< Updated upstream
-  // Chooses and executes a control strategy:
-=======
   double MyController_class::compareFrames(KDL::Frame a, KDL::Frame b)
   {
     double posDiff = (a.p - b.p).Norm();
@@ -770,7 +749,6 @@ namespace MyController_namespace
     return posDiff + rotDiff;
   }
 
->>>>>>> Stashed changes
   void MyController_class::ex3_smarterControllers(int controllerType)
   {
 
@@ -804,12 +782,6 @@ namespace MyController_namespace
     {
       KDL::Frame target = tsop_kdlFrame;
 
-<<<<<<< Updated upstream
-      KDL::JntArray result(num_joints);
-
-      int ret = InverseK(target, result);
-      if (ret != 0)
-=======
       // setup necesities for torque controller
       Kp_.data.setConstant(1.5);
       Ki_.data.setConstant(0);
@@ -817,18 +789,10 @@ namespace MyController_namespace
       qd_dot_.data.setConstant(0);
       // rate limiter for taskspace stuff and IK
       if (rateLimiter_10_2 < 10)
->>>>>>> Stashed changes
       {
         RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
         break;
       }
-<<<<<<< Updated upstream
-
-      for (int i = 0; i < num_joints; i++)
-      {
-        RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
-        qd_(i) = result(i);
-=======
       else // 10Hz
       {
         rateLimiter_10_2 = 0;
@@ -866,71 +830,91 @@ namespace MyController_namespace
           RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
           qd_(i) = result(i);
         }
->>>>>>> Stashed changes
       }
     }
     break;
 
-    case 2: // taskSpaceController
-{
-  // Compute FK, errors, Jacobian
-  KDL::Frame ee_frame;
-  fk_solver_->JntToCart(q_, ee_frame);
+    case 2: // Task-space torque control (without damping)
+    {
+      // Compute current end-effector pose
+      KDL::Frame ee_frame;
+      fk_solver_->JntToCart(q_, ee_frame);
 
-  KDL::Vector pos = ee_frame.p;
-  KDL::Rotation rot = ee_frame.M;
+      KDL::Vector pos = ee_frame.p;
+      KDL::Rotation rot = ee_frame.M;
 
-  KDL::Vector pos_d = tsop_kdlFrame.p;
-  KDL::Rotation rot_d = tsop_kdlFrame.M;
+      // Desired pose
+      KDL::Vector pos_d = tsop_kdlFrame.p;
+      KDL::Rotation rot_d = tsop_kdlFrame.M;
 
-  KDL::Vector e_pos = pos_d - pos;
-  KDL::Rotation R_err = rot.Inverse() * rot_d;
+      // Compute position/orientation error
+      KDL::Vector e_pos = pos_d - pos;
+      KDL::Rotation R_err = rot.Inverse() * rot_d;
 
-  // Convert KDL::Rotation to Eigen
-  Eigen::Matrix3d R_err_eigen;
-  for (int i = 0; i < 3; ++i)
-    for (int j = 0; j < 3; ++j)
-      R_err_eigen(i, j) = R_err(i, j);
+      Eigen::Matrix3d R_err_eigen;
+      for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+          R_err_eigen(i, j) = R_err(i, j);
 
-  Eigen::Matrix3d skew = 0.5 * (R_err_eigen - R_err_eigen.transpose());
-  Eigen::Vector3d e_rot(skew(2, 1), skew(0, 2), skew(1, 0));
+      Eigen::Matrix3d skew = 0.5 * (R_err_eigen - R_err_eigen.transpose());
+      Eigen::Vector3d e_rot(skew(2, 1), skew(0, 2), skew(1, 0));
 
-  Eigen::VectorXd e_x(6);
-  for (int i = 0; i < 3; i++)
-  {
-    e_x(i) = e_pos[i];
-    e_x(i + 3) = e_rot(i);
-  }
+      Eigen::VectorXd e_x(6);
+      for (int i = 0; i < 3; ++i)
+      {
+        e_x(i) = e_pos[i];
+        e_x(i + 3) = e_rot(i);
+      }
 
-  KDL::Jacobian J(num_joints);
-  jac_solver_->JntToJac(q_, J);
-  Eigen::MatrixXd J_eigen = J.data;
+      // Compute Jacobian and its derivative
+      KDL::Jacobian J(num_joints);
+      jac_solver_->JntToJac(q_, J);
+      Eigen::MatrixXd J_eigen = J.data;
 
-  // PD gains
-  Eigen::VectorXd Kp_task(6), Kd_task(6);
-  Kp_task.setConstant(200.0);
-  Kd_task.setConstant(20.0);
+      KDL::Jacobian Jdot(num_joints);
+      jacdot_solver->JntToJacDot(KDL::JacobianDotSolver::JntToJacDotInput(q_, qdot_), Jdot);
+      Eigen::MatrixXd Jdot_eigen = Jdot.data;
 
-  Eigen::VectorXd x_ddot_d = Kp_task.cwiseProduct(e_x) + Kd_task.cwiseProduct(-J_eigen * qdot_.data);
+      // Compute end-effector velocity
+      Eigen::VectorXd xdot = J_eigen * qdot_.data;
 
-  Eigen::VectorXd velocityIhope = J_eigen.transpose() * x_ddot_d;
+      // Desired task-space acceleration
+      xdot_d = Eigen::VectorXd::Zero(6);
+      xddot_d = Eigen::VectorXd::Zero(6);
 
-  for (int i = 0; i < num_joints; ++i)
-    qd_dot_(i) = velocityIhope(i);
-  }
-break;
+      Eigen::VectorXd x_ddot_ref = xddot_d + Kd_task.cwiseProduct(xdot_d - xdot) + Kp_task.cwiseProduct(e_x) - Jdot_eigen * qdot_.data;
 
+      // Compute joint accelerations from task accelerations (no damping)
+      Eigen::MatrixXd JJt_inv = (J_eigen * J_eigen.transpose()).inverse();
+      Eigen::MatrixXd J_pinv = J_eigen.transpose() * JJt_inv;
+
+      Eigen::VectorXd q_ddot_ref = J_pinv * x_ddot_ref;
+
+      // Compute torques (using full dynamics)
+      Eigen::VectorXd M_eigen(num_joints);
+      M_eigen.setZero();
+      for (int i = 0; i < num_joints; ++i)
+        for (int j = 0; j < num_joints; ++j)
+          M_eigen[i] += M_(i, j);
+
+      Eigen::VectorXd tau = M_.data * q_ddot_ref + C_.data + G_.data;
+
+      // Send torque commands
+      for (int i = 0; i < num_joints; ++i)
+        tau_d_(i) = tau(i);
+    }
+    break;
 
     default:
       for (int i = 0; i < num_joints; i++)
-        {
-          qd_(i) = qd_(i);
-          qd_dot_(i) = qd_dot_(i);
-          qd_ddot_(i) = qd_ddot_(i);
-        }
-    break;
+      {
+        qd_(i) = qd_(i);
+        qd_dot_(i) = qd_dot_(i);
+        qd_ddot_(i) = qd_ddot_(i);
+      }
+      break;
+    }
   }
-}
 
 } // namespace MyController_namespace
 

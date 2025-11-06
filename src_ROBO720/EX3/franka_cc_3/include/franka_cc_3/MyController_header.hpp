@@ -109,13 +109,22 @@ class MyController_class : public controller_interface::ControllerInterface {
   
   std::unique_ptr<KDL::ChainJntToJacSolver>  jac_solver_;
  
-
+  // control checks
+  bool x_d_first = true;
+  bool xdot_d_first = true;
 
   //Joint space state
   KDL::JntArray qd_, qd_dot_, qd_ddot_;
   KDL::JntArray exertedEffort_;
   KDL::JntArray q_, qdot_;
   KDL::JntArray e_, e_dot_, e_int_;
+
+  // Cartesian Velocity
+  Eigen::VectorXd xdot;
+  Eigen::VectorXd xdot_d;
+  Eigen::VectorXd x_ddot_d;
+  Eigen::VectorXd e_x(6);
+  Eigen::Vector3d e_rot;
 
   // torqe Controller
   KDL::JntArray aux_d_;
