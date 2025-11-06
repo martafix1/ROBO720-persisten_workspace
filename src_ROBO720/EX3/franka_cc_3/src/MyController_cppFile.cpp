@@ -246,6 +246,10 @@ namespace MyController_namespace
           }
 
           taskspace_objective_point = msg->points[0];
+<<<<<<< Updated upstream
+=======
+          RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
+>>>>>>> Stashed changes
         });
 
     auto parameters_client =
@@ -603,14 +607,65 @@ namespace MyController_namespace
     RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "Service done");
   }
 
+<<<<<<< Updated upstream
   // Internal helper function to compute IK for a given target frame.
   // Uses a joint-center initial guess and logs diagnostic information
+=======
+  void MyController_class::TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps)
+  {
+
+    // total linear interpolation
+    if (true)
+    {
+
+      double completness = (double)currentStep / (double)maxSteps; // ratio of how much of the movement is supposed to be completed
+      if (completness > 1)
+        completness = 1;
+      if (completness < 0)
+        completness = 0;
+
+      double xd = target.p.x();
+      double yd = target.p.y();
+      double zd = target.p.z();
+      double rd, pd, ad;
+      target.M.GetRPY(rd, pd, ad);
+
+      double xc = current.p.x();
+      double yc = current.p.y();
+      double zc = current.p.z();
+      double rc, pc, ac;
+      target.M.GetRPY(rc, pc, ac);
+
+      double xn = (xd - xc) * completness + xc;
+      double yn = (yd - yc) * completness + yc;
+      double zn = (zd - zc) * completness + zc;
+
+      // angles probs should be interpolated over spherical coords but hey this will work.
+      double rn = (rd - rc) * completness + rc;
+      double pn = (pd - pc) * completness + pc;
+      double an = (ad - ac) * completness + ac;
+
+      RCLCPP_INFO(get_node()->get_logger(), "\033[34m PathPlanning:\033[0m comp: %.3f| xn=%.3f, yn=%.3f, zn=%.3f, rn=%.3f, pn=%.3f, an=%.3f", completness, xn, yn, zn, rn, pn, an);
+
+      nextStep = KDL::Frame((KDL::Rotation::RotZ(an) * KDL::Rotation::RotY(pn) * KDL::Rotation::RotX(rn)), KDL::Vector(xn, yn, zn));
+    }
+    else
+    {
+    } // feel free to implement something better
+  }
+
+>>>>>>> Stashed changes
   int MyController_class::InverseK(KDL::Frame target, KDL::JntArray &result)
   {
 
     KDL::JntArray initial_guess(num_joints);
+<<<<<<< Updated upstream
     // initial_guess = q_;
     initial_guess = joint_center_;
+=======
+    initial_guess = q_;
+    // initial_guess = joint_center_;
+>>>>>>> Stashed changes
 
     std::string output;
 
@@ -646,13 +701,76 @@ namespace MyController_namespace
       RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
     }
 
+<<<<<<< Updated upstream
     int ret = ik_solver_->CartToJnt(initial_guess, target, result);
     RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
+=======
+    // EE dist heuristics
+    double frameDiff = compareFrames(ee_frame, target);
+    double tolerance = std::min((frameDiff / 5) * (frameDiff / 5), frameDiff / 50);
+    RCLCPP_INFO(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
+    miscData[5] = frameDiff;
+    miscData[6] = tolerance;
+
+    ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
+        kdl_chain_,
+        joint_min_limits_,
+        joint_max_limits_,
+        *fk_solver_,
+        *ik_vel_solver_,
+        1600,     // Max iterations  default: 400
+        tolerance // Tolerance default: 1e-5 1e-2
+    );
+    int ret = ik_solver_->CartToJnt(initial_guess, target, result);
+    miscData[8] = 0;
+    // RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
+    if (ret != 0)
+    {
+      RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[33m joint position as initial guess failed with code \033[0m %d, trying mid joint position", ret);
+      initial_guess = joint_center_;
+      output = "";
+      for (int i = 0; i < num_joints; ++i)
+      {
+        output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";
+      }
+      RCLCPP_INFO(get_node()->get_logger(), "New initial guess: %s", output.c_str());
+      ret = ik_solver_->CartToJnt(initial_guess, target, result);
+      miscData[8] = 1;
+      if (ret != 0)
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[31m ik fallback failed with \033[0m %d returing", ret);
+        miscData[8] = 2;
+      }
+    }
+
+    KDL::Frame ik_ee_result;
+    fk_result = fk_solver_->JntToCart(result, ik_ee_result);
+    if (fk_result != 0)
+    {
+      ik_ee_result = KDL::Frame::Identity();
+    }
+    double ik_ee_target_diff = compareFrames(ik_ee_result, target);
+    miscData[7] = ik_ee_target_diff;
+>>>>>>> Stashed changes
 
     return ret;
   }
 
+<<<<<<< Updated upstream
   // Chooses and executes a control strategy:
+=======
+  double MyController_class::compareFrames(KDL::Frame a, KDL::Frame b)
+  {
+    double posDiff = (a.p - b.p).Norm();
+    KDL::Rotation R_diff = a.M.Inverse() * b.M;
+    KDL::Vector axis;
+    double angle = R_diff.GetRotAngle(axis); // This returns the angle, and sets the axis
+    double rotDiff = std::abs(angle);
+
+    return posDiff + rotDiff;
+  }
+
+>>>>>>> Stashed changes
   void MyController_class::ex3_smarterControllers(int controllerType)
   {
 
@@ -686,19 +804,69 @@ namespace MyController_namespace
     {
       KDL::Frame target = tsop_kdlFrame;
 
+<<<<<<< Updated upstream
       KDL::JntArray result(num_joints);
 
       int ret = InverseK(target, result);
       if (ret != 0)
+=======
+      // setup necesities for torque controller
+      Kp_.data.setConstant(1.5);
+      Ki_.data.setConstant(0);
+      Kd_.data.setConstant(1);
+      qd_dot_.data.setConstant(0);
+      // rate limiter for taskspace stuff and IK
+      if (rateLimiter_10_2 < 10)
+>>>>>>> Stashed changes
       {
         RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
         break;
       }
+<<<<<<< Updated upstream
 
       for (int i = 0; i < num_joints; i++)
       {
         RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
         qd_(i) = result(i);
+=======
+      else // 10Hz
+      {
+        rateLimiter_10_2 = 0;
+        // taskspace path planning to smooth down the jumps
+        KDL::Frame nextStep;
+        KDL::Frame current;
+        int fk_result = fk_solver_->JntToCart(q_, current);
+        if (fk_result != 0)
+        {
+          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: FK failed, breaking");
+          break;
+        }
+        // check wheter the target point changed
+        double TaskSpaceError = compareFrames(lastTarget, target);
+        miscData[0] = TaskSpaceError;
+        if (TaskSpaceError > 1e-3)
+        {
+          pathSteps_1 = 0;
+        }
+        lastTarget = target;
+        miscData[4] = pathSteps_1;
+        TaskSpacePathPlanner(target, current, nextStep, pathSteps_1, maxpathSteps_1);
+        pathSteps_1 += 1;
+
+        KDL::JntArray result(num_joints);
+        int ret = InverseK(nextStep, result);
+        if (ret != 0)
+        {
+          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
+          break;
+        }
+
+        for (int i = 0; i < num_joints; i++)
+        {
+          RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
+          qd_(i) = result(i);
+        }
+>>>>>>> Stashed changes
       }
     }
     break;
@@ -755,14 +923,14 @@ break;
 
     default:
       for (int i = 0; i < num_joints; i++)
-      {
-        qd_(i) = qd_(i);
-        qd_dot_(i) = qd_dot_(i);
-        qd_ddot_(i) = qd_ddot_(i);
-      }
-      break;
-    }
+        {
+          qd_(i) = qd_(i);
+          qd_dot_(i) = qd_dot_(i);
+          qd_ddot_(i) = qd_ddot_(i);
+        }
+    break;
   }
+}
 
 } // namespace MyController_namespace
 
