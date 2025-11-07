@@ -37,6 +37,8 @@ class TaskSpaceObjectivePublisher(Node):
             self.square_centre = [0,0,1.8]
             self.robot_base = [0,0,0]
 
+            self.positionCommand = [0,0,0]
+            self.followPositionCommand = False
 
             self.running = True                    
             self._start_input_thread()             
@@ -77,6 +79,9 @@ class TaskSpaceObjectivePublisher(Node):
 
 
         # make the end effector point away from base:
+
+        if self.followPositionCommand:
+            activeCorner = self.positionCommand
 
         v = np.array(activeCorner) - np.array(self.robot_base)
         # Normalize the vector
@@ -165,7 +170,7 @@ class TaskSpaceObjectivePublisher(Node):
 
     def _handle_command(self, cmd: str):
         if cmd == "help":
-            self.get_logger().info("help, status, stop, start, period <s>, ampl <1> ")
+            self.get_logger().info("help, status, stop, start, period <s>, ampl <1>, go, pcmd <x> <y> <z> ")
 
         elif cmd == "status":
             self.get_logger().info(f" Motion period: {self.motionPeriod}, Motion amplitude: {self.amplitude}, Moving: {self.moving}, Step: {self.step}, cmd freq: {1/self.timerPeriod} [Hz]")
@@ -178,6 +183,9 @@ class TaskSpaceObjectivePublisher(Node):
                 self.moving = False
             
         elif cmd == "start":
+            if self.followPositionCommand:
+                self.get_logger().info("Not following position command anymore")
+                self.followPositionCommand = False
             if self.moving == True:
                 self.get_logger().info("Already moving")
             else:
@@ -201,7 +209,35 @@ class TaskSpaceObjectivePublisher(Node):
                 self.get_logger().info(f"Motion amplitude set to {new_amplitude}.")
             except Exception as e:
                 self.get_logger().warn(f"Invalid period command: {e}")
+
+        elif cmd.startswith("pcmd "):
+            try:
+                parts = cmd.split()
+                numbers = parts[1:] # the first part is the command 
+                if len(numbers) < 3:
+                    self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, 3 are required; {cmd} ") 
+                else:
+                    if len(numbers) > 3:
+                        self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, ignoring the exces over 3 ") 
+                    try:
+                        floats = [float(x) for x in numbers]
+                        self.positionCommand = floats
+                        self.followPositionCommand = True    
+                        self.get_logger().info(f"Position command set to {floats}, following.")
+                    except ValueError as v:
+                        self.get_logger().warn(f"Something is probably not a number; {v}, {cmd} ")
+                    except Exception as e:
+                        self.get_logger().warn(f"idk: {e}")        
+                    
+            except Exception as e:
+                self.get_logger().warn(f"Invalid position command: {e}")        
         
+        elif cmd.startswith("go"):
+            self._handle_command("stop") #stop the motion
+            self.get_logger().info(f"Now following position command")
+            self.followPositionCommand = True
+
+
         else:
             self.get_logger().warn(f"Unknown command: '{cmd}'")
 

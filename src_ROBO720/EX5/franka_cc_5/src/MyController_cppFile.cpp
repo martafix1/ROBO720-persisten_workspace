@@ -270,7 +270,9 @@ namespace MyController_namespace
               msg->velocities.size() != num_joints ||
               msg->accelerations.size() != num_joints)
           {
+            
             RCLCPP_WARN(get_node()->get_logger(), "Received trajectory point with wrong sizes");
+            
             return;
           }
 
@@ -293,7 +295,10 @@ namespace MyController_namespace
           }
 
           taskspace_objective_point = msg->points[0];
+          #ifdef DEBUG_INPUT
           RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
+          #endif
+          
 
         });
 
@@ -478,6 +483,8 @@ namespace MyController_namespace
         1e-4  // Tolerance default: 1e-5
     );
 
+    jac_solver = std::make_unique<KDL::ChainJntToJacSolver>(kdl_chain_);
+
     M_.resize(kdl_chain_.getNrOfJoints());
     C_.resize(kdl_chain_.getNrOfJoints());
     G_.resize(kdl_chain_.getNrOfJoints());
@@ -566,8 +573,16 @@ namespace MyController_namespace
     }
     if(!useJointSpaceInputs)
     {
-      RCLCPP_WARN(get_node()->get_logger(), " \033[44m controller expects \033[0m taskspace inputs");
+      RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
     }
+
+    // cannot be in the static function or in the constructor (no logger yet).
+    #ifdef DEBUG_EX5_POINTS
+    for (size_t i = 0; i < repulsionPoints.size(); ++i) {
+      const auto& point = repulsionPoints[i];
+      RCLCPP_INFO(get_node()->get_logger(), "added point (%4.2f %4.2f %4.2f), d10 = %4.2f",point.x.x(),point.x.y(),point.x.z(),point.dist10);
+    }   
+    #endif
 
 
     return CallbackReturn::SUCCESS;
@@ -832,6 +847,10 @@ namespace MyController_namespace
           taskspace_objective_point.transforms[0].rotation.z,
           taskspace_objective_point.transforms[0].rotation.w);
       tsop_kdlFrame = KDL::Frame(orientation, position);
+        miscData[1] = position.data[0];
+        miscData[2] = position.data[1];
+        miscData[3] = position.data[2];
+
     }
     else
     {
@@ -845,76 +864,13 @@ namespace MyController_namespace
 
     switch (controllerType)
     {
-    case 1: // jointSpaceController
-    {
-      KDL::Frame target = tsop_kdlFrame;
-
-      //setup necesities for torque controller
-      Kp_.data.setConstant(1.5);
-      Ki_.data.setConstant(0);
-      Kd_.data.setConstant(1);
-      qd_dot_.data.setConstant(0);
-      // rate limiter for taskspace stuff and IK
-      if (rateLimiter_10_2 < 10)
-      {
-        rateLimiter_10_2++;
-      }
-      else //10Hz
-      {
-        rateLimiter_10_2 = 0;
-        // taskspace path planning to smooth down the jumps
-        KDL::Frame nextStep;
-        KDL::Frame current;
-        int fk_result = fk_solver_->JntToCart(q_, current);
-        if (fk_result != 0)
-        {
-          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: FK failed, breaking");
-          break;
-        }
-        //check wheter the target point changed
-        double TaskSpaceError =  compareFrames(lastTarget,target);
-        miscData[0] = TaskSpaceError;
-        if(TaskSpaceError > 1e-3)
-        {
-          pathSteps_1 = 0;
-          
-        }
-        lastTarget = target;
-        miscData[4] = pathSteps_1;
-        TaskSpacePathPlanner(target, current, nextStep, pathSteps_1, maxpathSteps_1);
-            pathSteps_1 += 1;
-
-        KDL::JntArray result(num_joints);
-        int ret = InverseK(nextStep, result);
-        if (ret != 0)
-        {
-          #ifdef DEBUG_EX3
-            RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.1: IK failed, breaking");
-          #endif
-          break;
-        }
-
-        for (int i = 0; i < num_joints; i++)
-        {
-          #ifdef DEBUG_EX3
-            RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.1: IK success, joint %d = %f", i + 1, result(i));
-          #endif
-          qd_(i) = result(i);
-        }
-      }
-    }
-    break;
-
-    case 2: // taskSpaceController
-      /* code */
-      break;
 
     case 3: // jointSpaceController
     {
       KDL::Frame target = tsop_kdlFrame;
       
       //setup necesities for torque controller
-      double w = 20; //rad/s
+      double w = 2; //rad/s
       double damp = 1; // relative
       // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
       // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
@@ -1037,7 +993,17 @@ namespace MyController_namespace
       RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: FK failed for some reason");
       return;
     }
+
     Eigen::Vector3d EE(ee_frame.p.x(),ee_frame.p.y(),ee_frame.p.z());
+
+    miscData[18] = ee_frame.p.x();
+    miscData[19] = ee_frame.p.y();
+    miscData[20] = ee_frame.p.z();
+
+
+
+
+    Eigen::Vector3d totalRepulse(0,0,0);
 
     for (size_t i = 0; i < repulsionPoints.size(); ++i) {
       const auto& rp = repulsionPoints[i];
@@ -1045,33 +1011,70 @@ namespace MyController_namespace
       //dist
       double dist = (EE-rp.x).norm();
 
-      if(dist > rp.x0)
+      Eigen::Vector3d repulseVector(0,0,0);
+
+      if(dist > rp.dist0)
       {
-        continue;
+        // turn of for debuggins
+        //continue;
+        
+      }
+      else{
+        double U = 0.5*rp.b *(1.0/dist-1.0/rp.a)*rp.k ; 
+        
+        if((EE-rp.x).squaredNorm()<= 0)
+        {
+          RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: distance to point %d is zero, cannot repulse.",i);
+          continue;
+        }
+         repulseVector = (EE-rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
+        
+        repulseVector *= U;
+        totalRepulse +=repulseVector;
+
       }
 
 
+      int pointOfInterest = 2;
+      if(i == pointOfInterest){
+        miscData[24] = i;
+        miscData[25] = dist;
 
+        miscData[26] = rp.x.x();
+        miscData[27] = rp.x.y();
+        miscData[28] = rp.x.z();
 
-      double U = 0.5*rp.b *(1.0/dist-1.0/rp.a); 
-      
-      if((EE-rp.x).squaredNorm()<= 0)
-      {
-        RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: distance to point %d is zero, cannot repulse.",i);
-        continue;
+        miscData[29] = repulseVector.x();
+        miscData[30] = repulseVector.y();
+        miscData[31] = repulseVector.z();
+
+        miscData[32] = repulseVector.norm();
       }
-      Eigen::Vector3d repulseVector = (EE-rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
-      
-      repulseVector *= U;
-      
+
 
     }
 
+    KDL::Jacobian J(num_joints);
+    jac_solver->JntToJac(q_, J);
+    Eigen::MatrixXd J_eigen = J.data;
+
+    Eigen::Matrix<double,6,1> wrench;
+    wrench.setZero();
+    wrench.head<3>() = totalRepulse; // linear force only
+    
+    Eigen::VectorXd JtF = J_eigen.transpose() * wrench;
+
+    qd_dot_.data += JtF;
+
+    miscData[21] = totalRepulse.x();
+    miscData[22] = totalRepulse.y();
+    miscData[23] = totalRepulse.z();
 
 
   }
 
-  static void MyController_class::taskSpaceRepulse_calcRepulseCoefs(pointRep &point){
+  // it is static but it cannot be said such
+  void MyController_class::taskSpaceRepulse_calcRepulseCoefs(pointRep &point){
     // assuming the linear version : U = 1/2 *b1*(1./d_-1/a1); 
     //a1= x0
     //b1= (x0*x1)/(x0 - x1)
@@ -1080,11 +1083,16 @@ namespace MyController_namespace
     point.b = (point.dist0*point.dist1)/((point.dist0-point.dist1));
     point.dist10 = 1/(1/point.a + 10/point.b);
 
+
+
   }
 
   void MyController_class::taskSpaceRepulse_initHardcodedStuff(){
-    repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.5), 0.5, 0.3, 1);
-    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.5), 0.5, 0.3, 1);
+    repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.8), 0.4, 0.2, 0);
+    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
+    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 10);
+
+
 
   }
 

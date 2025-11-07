@@ -1,5 +1,10 @@
 
+ex3_smartControllers():
 
+if (!taskspace_objective_point.transforms.empty())
+    miscData[1] = position.data.x();
+    miscData[2] = position.data.y();
+    miscData[3] = position.data.z();
 
 ex3_smartControllers():case1:
 miscData[4] = pathSteps_1;
@@ -19,3 +24,29 @@ if(i == 0){
     miscData[15] = repulse;
 
     }
+
+
+taskSpaceRepulse():
+miscData[18] = ee_frame.p.x();
+miscData[19] = ee_frame.p.y();
+miscData[20] = ee_frame.p.z();
+
+miscData[21] = totalRepulse.x();
+miscData[22] = totalRepulse.y();
+miscData[23] = totalRepulse.z();
+
+int pointOfInterest = 2;totalRepulse +=repulseVector;
+if(i == pointOfInterest){
+    miscData[24] = i;
+    miscData[25] = dist;
+
+    miscData[26] = rp.x.x();
+    miscData[27] = rp.x.y();
+    miscData[28] = rp.x.z();
+
+    miscData[29] = repulseVector.x();
+    miscData[30] = repulseVector.y();
+    miscData[31] = repulseVector.z();
+
+    miscData[32] = repulseVector.norm();
+}

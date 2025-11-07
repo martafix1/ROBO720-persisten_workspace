@@ -5,6 +5,8 @@
 
 // #define DEBUG_IK
 // #define DEBUG_EX3
+// #define DEBUG_INPUT
+#define DEBUG_EX5_POINTS
 
 #pragma once
 #include <string>
@@ -46,6 +48,7 @@
 #include <kdl/chainiksolvervel_pinv.hpp>
 #include <kdl/chainiksolvervel_wdls.hpp>
 #include <kdl/chainiksolverpos_nr_jl.hpp>
+#include <kdl/chainjnttojacsolver.hpp>
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -146,10 +149,13 @@ class MyController_class : public controller_interface::ControllerInterface {
     {
         MyController_class::taskSpaceRepulse_calcRepulseCoefs(*this);
     }
-  }
+  };
 
   std::vector<pointRep> repulsionPoints;
 
+
+  //jacobian solver
+  std::unique_ptr<KDL::ChainJntToJacSolver> jac_solver;
 
 
   // joint handles for URDF
@@ -225,7 +231,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   void taskSpaceRepulse();
   static void taskSpaceRepulse_calcRepulseCoefs(pointRep &point);
   void taskSpaceRepulse_initHardcodedStuff();
-  bool useJointSpaceInputs = true;
+  bool useJointSpaceInputs = false;
 
 
 };
