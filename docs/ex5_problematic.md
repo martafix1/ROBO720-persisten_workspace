@@ -23,3 +23,11 @@ The slowdown seems still bit abrupt.
 Switching to acceleration commands just results in actaully abrupt stop, as the command is not scaled by the 2* damp*w constant, this would need retuning
 
 Trying out quadratic velocity dependence, keeping the viscosity itself linear. Tried the full quadratic (v^2 + v), trying just quadratic (v^2). The quadratic term needs to be corrected for direction. 
+
+## repulsion point
+
+Repulsion point was implemented, the implementation differs a bit from the lectures, should be easier.
+As visible in the saved plots, it should work, the arm fails to approach point -0.3 0.3 1.8, which is center of the repulsion point, but manages to reach 0.3 0.3 1.8, where there is no repulsion point present.
+
+It seems bit odd that most of the repulsion is reflected in the x axis. While the transformation from taskspace to jointspace is non trivial, (i guess), the other cause might be that there are different gains at different joints, therefore maybe in current configuration it is easier to move the robot away in x axis than in the others.
+
