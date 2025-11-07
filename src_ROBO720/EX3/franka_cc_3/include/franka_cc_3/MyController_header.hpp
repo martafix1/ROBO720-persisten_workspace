@@ -135,6 +135,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   KDL::JntArray aux_d_;
   KDL::JntArray comp_d_;
   KDL::JntArray tau_d_;
+  
+  xdot_d = Eigen::VectorXd::Zero(6);
+  xddot_d = Eigen::VectorXd::Zero(6);
     
   // gains
   KDL::JntArray Kp_, Ki_, Kd_;
