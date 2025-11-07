@@ -421,6 +421,7 @@ namespace MyController_namespace
     ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_wdls>(kdl_chain_);
     ik_vel_solver_->setLambda(0.01);
     jac_solver_ = std::make_unique<KDL::ChainJntToJacSolver>(kdl_chain_);
+    jacdot_solver_ = std::make_unique<KDL::ChainJntToJacDotSolver>(kdl_chain_);
 
     ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
         kdl_chain_,
@@ -872,7 +873,7 @@ namespace MyController_namespace
       Eigen::MatrixXd J_eigen = J.data;
 
       KDL::Jacobian Jdot(num_joints);
-      jacdot_solver->JntToJacDot(KDL::JacobianDotSolver::JntToJacDotInput(q_, qdot_), Jdot);
+      jacdot_solver_->JntToJacDot(KDL::JacobianDotSolver::JntToJacDotInput(q_, qdot_), Jdot);
       Eigen::MatrixXd Jdot_eigen = Jdot.data;
 
       // Compute end-effector velocity

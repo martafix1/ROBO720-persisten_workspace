@@ -22,6 +22,7 @@
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl/chainjnttojacsolver.hpp>
+#include <chainjnttojacdotsolver.hpp>
 
 
 // Trajectory point
@@ -108,7 +109,11 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::unique_ptr<KDL::ChainIkSolverPos_NR_JL> ik_solver_;
   
   std::unique_ptr<KDL::ChainJntToJacSolver>  jac_solver_;
- 
+  std::unique_ptr<KDL::ChainJntToJacDotSolver>  jacdot_solver_;
+  
+
+
+
   // control checks
   bool x_d_first = true;
   bool xdot_d_first = true;
@@ -123,7 +128,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   Eigen::VectorXd xdot;
   Eigen::VectorXd xdot_d;
   Eigen::VectorXd x_ddot_d;
-  Eigen::VectorXd e_x(6);
+  Eigen::VectorXd e_x;
   Eigen::Vector3d e_rot;
 
   // torqe Controller
@@ -134,11 +139,21 @@ class MyController_class : public controller_interface::ControllerInterface {
   // gains
   KDL::JntArray Kp_, Ki_, Kd_;
 
+
+  // for path planning
+  int pathSteps_1 = 0;
+  int maxpathSteps_1 = 40;
+  KDL::Frame lastTarget = KDL::Frame::Identity();
+    
   // joint handles for URDF
   std::vector<std::string> joint_names_;  // joint names
   std::string root_name, tip_name;  //this coz why not hardcode it
   // std::vector<hardware_interface::JointHandle> joints_;  // joint handles
   std::vector<urdf::JointConstSharedPtr> joint_urdfs_;  // joint urdfs
+  
+
+  #define MISCDATAMAX 69
+  double miscData[MISCDATAMAX] = {0};
 
   // Publishers
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qd_;
@@ -175,10 +190,15 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp::Clock::SharedPtr node_clock_;
   
   void updateJointStates();
+  
   void ex3_smarterControllers(int controllerType);
+  void TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps);
   int InverseK(KDL::Frame target, KDL::JntArray &result);
+  double compareFrames(KDL::Frame a, KDL::Frame b);
 
   int rateLimiter_100 = 0;
+  int rateLimiter_10_1 = 0;
+  int rateLimiter_10_2 = 0;
 
 };
 
