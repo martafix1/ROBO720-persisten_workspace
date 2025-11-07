@@ -856,7 +856,7 @@ namespace MyController_namespace
         for (int j = 0; j < 3; ++j)
           R_err_eigen(i, j) = R_err(i, j);
 
-      Eigen::Matrix3d skew = 0.5 * (R_err_eigen - R_err_eigen.transpose());
+      Eigen::Matrix3d skew = (R_err_eigen - R_err_eigen.transpose());
       Eigen::Vector3d e_rot(skew(2, 1), skew(0, 2), skew(1, 0));
 
       Eigen::VectorXd e_x(6);
@@ -882,15 +882,15 @@ namespace MyController_namespace
       xdot_d = Eigen::VectorXd::Zero(6);
       xddot_d = Eigen::VectorXd::Zero(6);
 
-      Eigen::VectorXd x_ddot_ref = xddot_d + Kd_task.cwiseProduct(xdot_d - xdot) + Kp_task.cwiseProduct(e_x) - Jdot_eigen * qdot_.data;
+      Eigen::VectorXd x_ddot_ref = xddot_d + Kd_.cwiseProduct(xdot_d - xdot) + Kp_.cwiseProduct(e_x) - Jdot_eigen * qdot_.data;
 
-      // Compute joint accelerations from task accelerations (no damping)
+      // Compute joint accelerations from task accelerations 
       Eigen::MatrixXd JJt_inv = (J_eigen * J_eigen.transpose()).inverse();
       Eigen::MatrixXd J_pinv = J_eigen.transpose() * JJt_inv;
 
       Eigen::VectorXd q_ddot_ref = J_pinv * x_ddot_ref;
 
-      // Compute torques (using full dynamics)
+      // Compute torques 
       Eigen::VectorXd M_eigen(num_joints);
       M_eigen.setZero();
       for (int i = 0; i < num_joints; ++i)
