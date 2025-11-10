@@ -153,6 +153,38 @@ class MyController_class : public controller_interface::ControllerInterface {
 
   std::vector<pointRep> repulsionPoints;
 
+  struct planeRep_finite{
+    pointRep centerPoint; //has all the repulsion stuff, acts as a plane cetre
+    Eigen::Vector3d direction;
+    Eigen::Vector3d planeX; // will be projected, just should not be parralel 
+    Eigen::Vector3d planeY; // auto calculated
+    Eigen::Vector2d l1;
+    Eigen::Vector2d l2;
+    Eigen::Vector2d l3;
+    Eigen::Vector2d l4;
+
+    planeRep_finite(const pointRep centerPoint_, const Eigen::Vector3d direction_, const Eigen::Vector3d planeX_,
+       const Eigen::Vector2d l1_, const Eigen::Vector2d l2_, const Eigen::Vector2d l3_, const Eigen::Vector2d l4_)
+      :  centerPoint(centerPoint_), direction(direction_), planeX(planeX_), l1(l1_), l2(l2_), l3(l3_), l4(l4_)
+      {
+        direction.normalize();
+        planeX = (planeX - (planeX.dot(direction)) * direction);
+        double normX = planeX.norm();
+        if (normX < 1e-8) {
+            std::cerr << "Warning: planeX is parallel (or almost parallel) to the plane normal!" << std::endl;
+            throw std::runtime_error("planeRep_finite: planeX is parallel (or almost parallel) to the plane normal.");
+            //planeX = Eigen::Vector3d(1, 0, 0); // fallback to avoid NaNs
+        } else {
+            planeX.normalize();
+        }
+
+        planeY = planeX.cross(direction);
+
+      }
+  };
+    
+  std::vector<planeRep_finite> repulsionPlanes;
+
 
   //jacobian solver
   std::unique_ptr<KDL::ChainJntToJacSolver> jac_solver;

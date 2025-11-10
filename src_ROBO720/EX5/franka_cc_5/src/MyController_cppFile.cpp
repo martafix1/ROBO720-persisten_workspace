@@ -1015,7 +1015,7 @@ namespace MyController_namespace
 
       if(dist > rp.dist0)
       {
-        // turn of for debuggins
+        // turn off for debuggins
         //continue;
         
       }
@@ -1052,6 +1052,50 @@ namespace MyController_namespace
       }
 
 
+    }
+
+    for (size_t i = 0; i < repulsionPlanes.size(); ++i) {
+      const auto& rplane = repulsionPlanes[i];
+      
+      double dist = (EE - rplane.centerPoint.x).dot(rplane.direction);
+      Eigen::Vector3d repulseVector(0,0,0);
+
+      if (dist > rplane.centerPoint.dist0)
+      {
+        // turn off for debuggins
+        //continue;
+
+      }else{
+        // check for limits tho.
+        // TODO
+        if(dist < 1e-3){
+          dist = 1e-3;
+        }
+        double U = 0.5*rplane.centerPoint.b *(1.0/dist-1.0/rplane.centerPoint.a)*rplane.centerPoint.k; 
+        repulseVector = rplane.direction;
+        repulseVector *= U;
+        totalRepulse +=repulseVector;
+
+        int planeOfInterest = 0;
+        if(i == planeOfInterest){
+          miscData[24] = i;
+          miscData[25] = dist;
+
+          miscData[26] = rp.x.x();
+          miscData[27] = rp.x.y();
+          miscData[28] = rp.x.z();
+
+          miscData[29] = repulseVector.x();
+          miscData[30] = repulseVector.y();
+          miscData[31] = repulseVector.z();
+
+          miscData[32] = repulseVector.norm();
+        }
+
+      }
+
+
+    
     }
 
     KDL::Jacobian J(num_joints);
@@ -1092,6 +1136,8 @@ namespace MyController_namespace
     repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
     repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 10);
 
+    pointRep rp = pointRep(Eigen::Vector3d(0.2, 1, 0), 0.2, 0.15, 15);
+    repulsionPlanes.emplace_back(rp,Eigen::Vector3d(1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(-1,1), Eigen::Vector2d(1,1), Eigen::Vector2d(1,-1));
 
 
   }
