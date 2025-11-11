@@ -111,9 +111,6 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::unique_ptr<KDL::ChainJntToJacSolver>  jac_solver_;
   std::unique_ptr<KDL::ChainJntToJacDotSolver>  jacdot_solver_;
   
-
-
-
   // control checks
   bool x_d_first = true;
   bool xdot_d_first = true;
@@ -141,6 +138,9 @@ class MyController_class : public controller_interface::ControllerInterface {
     
   // gains
   KDL::JntArray Kp_, Ki_, Kd_;
+
+  // Prev frame
+  KDL::FrameTd_prev_;
 
 
   // for path planning

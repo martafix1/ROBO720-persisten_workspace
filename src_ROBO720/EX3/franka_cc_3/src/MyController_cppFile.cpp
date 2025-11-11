@@ -437,6 +437,12 @@ namespace MyController_namespace
     C_.resize(kdl_chain_.getNrOfJoints());
     G_.resize(kdl_chain_.getNrOfJoints());
 
+    Eigen::Vector3d v_d = Eigen::Vector3d::Zero();
+    Eigen::VectorXd Kp_cartesian_ = Eigen::Vector3d(1.0, 1.0, 1.0);
+    Eigen::VectorXd Kd_cartesian_ = Eigen::VectorXd::Constant(num_joints, 5.0);
+
+
+
     // print kdltree, kdlchain, jointnames, jointurdfs for learning purposes
     fprintf(stderr, "Number of segments in kdl_tree_: %d\n", kdl_tree_.getNrOfSegments());
     fprintf(stderr, "Number of joints in kdl_chain_: %d\n", kdl_chain_.getNrOfJoints());
@@ -835,76 +841,52 @@ namespace MyController_namespace
     }
     break;
 
-    case 2: // Task-space torque control (without damping)
+    case 2: // Task-space resolved-rate PD control
     {
-      // Compute current end-effector pose
-      KDL::Frame ee_frame;
-      fk_solver_->JntToCart(q_, ee_frame);
+      // 1. Forward kinematics
+      KDL::Frame Te;
+      fk_solver_->JntToCart(q_, Te);
 
-      KDL::Vector pos = ee_frame.p;
-      KDL::Rotation rot = ee_frame.M;
-
-      // Desired pose
-      KDL::Vector pos_d = tsop_kdlFrame.p;
-      KDL::Rotation rot_d = tsop_kdlFrame.M;
-
-      // Compute position/orientation error
-      KDL::Vector e_pos = pos_d - pos;
-      KDL::Rotation R_err = rot.Inverse() * rot_d;
-
-      Eigen::Matrix3d R_err_eigen;
-      for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-          R_err_eigen(i, j) = R_err(i, j);
-
-      Eigen::Matrix3d skew = (R_err_eigen - R_err_eigen.transpose());
-      Eigen::Vector3d e_rot(skew(2, 1), skew(0, 2), skew(1, 0));
-
+      // 2. Desired and actual pose difference (full 6D)
+      KDL::Frame Td = tsop_kdlFrame;
+      KDL::Twist x_err = KDL::diff(Td, Te);
       Eigen::VectorXd e_x(6);
-      for (int i = 0; i < 3; ++i)
-      {
-        e_x(i) = e_pos[i];
-        e_x(i + 3) = e_rot(i);
-      }
+      e_x << x_err.vel.x(), x_err.vel.y(), x_err.vel.z(),
+          x_err.rot.x(), x_err.rot.y(), x_err.rot.z();
 
-      // Compute Jacobian and its derivative
+      // 3. Desired twist (ϑd) from desired pose motion
+      KDL::Twist v_d = KDL::diff(Td, Td_prev_, period.seconds());
+      Td_prev_ = Td;
+
+      Eigen::VectorXd v_d_eig(6);
+      v_d_eig << v_d.vel.x(), v_d.vel.y(), v_d.vel.z(),
+          v_d.rot.x(), v_d.rot.y(), v_d.rot.z();
+
+      Eigen::VectorXd v_cmd = v_d_eig + Kp_cartesian_.cwiseProduct(e_x);
+
       KDL::Jacobian J(num_joints);
       jac_solver_->JntToJac(q_, J);
-      Eigen::MatrixXd J_eigen = J.data;
+      Eigen::MatrixXd J_eig = J.data;
+      Eigen::MatrixXd J_pinv = J_eig.completeOrthogonalDecomposition().pseudoInverse();
 
-      KDL::Jacobian Jdot(num_joints);
-      jacdot_solver_->JntToJacDot(KDL::JacobianDotSolver::JntToJacDotInput(q_, qdot_), Jdot);
-      Eigen::MatrixXd Jdot_eigen = Jdot.data;
+      Eigen::VectorXd qdot_cmd = J_pinv * v_cmd;
 
-      // Compute end-effector velocity
-      Eigen::VectorXd xdot = J_eigen * qdot_.data;
+      Eigen::VectorXd qdot(qdot_.data);
+      Eigen::VectorXd qddot_cmd = Kd_cartesian_.cwiseProduct(qdot_cmd - qdot);
 
-      // Desired task-space acceleration
-      xdot_d = Eigen::VectorXd::Zero(6);
-      xddot_d = Eigen::VectorXd::Zero(6);
+      // Compute dynamics and torque
+      dyn_solver_->JntToMass(q_, M_);
+      dyn_solver_->JntToCoriolis(q_, qdot_, C_);
+      dyn_solver_->JntToGravity(q_, G_);
 
-      Eigen::VectorXd x_ddot_ref = xddot_d + Kd_.cwiseProduct(xdot_d - xdot) + Kp_.cwiseProduct(e_x) - Jdot_eigen * qdot_.data;
+      Eigen::MatrixXd M_eig = M_.data;
+      Eigen::VectorXd tau = M_eig * qddot_cmd + C_.data + G_.data;
 
-      // Compute joint accelerations from task accelerations 
-      Eigen::MatrixXd JJt_inv = (J_eigen * J_eigen.transpose()).inverse();
-      Eigen::MatrixXd J_pinv = J_eigen.transpose() * JJt_inv;
-
-      Eigen::VectorXd q_ddot_ref = J_pinv * x_ddot_ref;
-
-      // Compute torques 
-      Eigen::VectorXd M_eigen(num_joints);
-      M_eigen.setZero();
-      for (int i = 0; i < num_joints; ++i)
-        for (int j = 0; j < num_joints; ++j)
-          M_eigen[i] += M_(i, j);
-
-      Eigen::VectorXd tau = M_.data * q_ddot_ref + C_.data + G_.data;
-
-      // Send torque commands
       for (int i = 0; i < num_joints; ++i)
         tau_d_(i) = tau(i);
+
+      break;
     }
-    break;
 
     default:
       for (int i = 0; i < num_joints; i++)
@@ -916,6 +898,7 @@ namespace MyController_namespace
       break;
     }
   }
+}
 
 } // namespace MyController_namespace
 
