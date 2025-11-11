@@ -66,7 +66,6 @@ namespace MyController_namespace
     tip_name = "panda_link7";
     root_name = "base";
 
-    taskSpaceRepulse_initHardcodedStuff();
 
     std::cout << "\033[35m ItDidWork: \033[0m constructor" << std::endl;
   }
@@ -576,6 +575,7 @@ namespace MyController_namespace
       RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
     }
 
+    taskSpaceRepulse_initHardcodedStuff();
     // cannot be in the static function or in the constructor (no logger yet).
     #ifdef DEBUG_EX5_POINTS
     for (size_t i = 0; i < repulsionPoints.size(); ++i) {
@@ -892,9 +892,9 @@ namespace MyController_namespace
         int ret = InverseK(target, result);
         if (ret != 0)
         {
-          #ifdef DEBUG_EX3
+          //#ifdef DEBUG_EX3
             RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.3: IK failed, breaking");
-          #endif
+          //#endif
           break;
         }
         for (int i = 0; i < num_joints; i++)
@@ -1056,9 +1056,14 @@ namespace MyController_namespace
 
     for (size_t i = 0; i < repulsionPlanes.size(); ++i) {
       const auto& rplane = repulsionPlanes[i];
-      
+      ////RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: repulsionPlanes.size %d ",repulsionPlanes.size());
       double dist = (EE - rplane.centerPoint.x).dot(rplane.direction);
       Eigen::Vector3d repulseVector(0,0,0);
+
+      Eigen::Vector3d Qprojected(0,0,0);
+      Eigen::Vector3d r(0,0,0);
+
+      Eigen::Vector2d planeCordsProjected(0,0);
 
       if (dist > rplane.centerPoint.dist0)
       {
@@ -1068,30 +1073,53 @@ namespace MyController_namespace
       }else{
         // check for limits tho.
         // TODO
-        if(dist < 1e-3){
-          dist = 1e-3;
+        Qprojected = EE - (dist * rplane.direction);
+        r = Qprojected - rplane.centerPoint.x;
+
+        
+        planeCordsProjected(0) = r.dot(rplane.planeX);
+        planeCordsProjected(1) = r.dot(rplane.planeY);
+        
+        if( std::min(rplane.l1.x(),rplane.l2.x()) < planeCordsProjected(0) && planeCordsProjected(0) < std::max(rplane.l1.x(),rplane.l2.x())   &&
+            std::min(rplane.l1.y(),rplane.l2.y()) < planeCordsProjected(1) && planeCordsProjected(1) < std::max(rplane.l1.y(),rplane.l2.y())   )
+        {
+          if(dist < 1e-3){
+            dist = 1e-3;
+          }
+          double U = 0.5*rplane.centerPoint.b *(1.0/dist-1.0/rplane.centerPoint.a)*rplane.centerPoint.k; 
+          repulseVector = rplane.direction;
+          repulseVector *= U;
+          totalRepulse +=repulseVector;
+
+          
+
+
+
         }
-        double U = 0.5*rplane.centerPoint.b *(1.0/dist-1.0/rplane.centerPoint.a)*rplane.centerPoint.k; 
-        repulseVector = rplane.direction;
-        repulseVector *= U;
-        totalRepulse +=repulseVector;
+        else{} // did not lie in the rect
 
-        int planeOfInterest = 0;
-        if(i == planeOfInterest){
-          miscData[24] = i;
-          miscData[25] = dist;
+        
 
-          miscData[26] = rp.x.x();
-          miscData[27] = rp.x.y();
-          miscData[28] = rp.x.z();
+      }
 
-          miscData[29] = repulseVector.x();
-          miscData[30] = repulseVector.y();
-          miscData[31] = repulseVector.z();
+      int planeOfInterest = 0;
+      if(i == planeOfInterest){
+        miscData[34] = i;
+        miscData[35] = dist;
 
-          miscData[32] = repulseVector.norm();
-        }
+        miscData[36] = Qprojected.x();
+        miscData[37] = Qprojected.y();
+        miscData[38] = Qprojected.z();
 
+        miscData[39] = repulseVector.x();
+        miscData[40] = repulseVector.y();
+        miscData[41] = repulseVector.z();
+
+
+        miscData[42] = repulseVector.norm();
+
+        miscData[43] = planeCordsProjected(0);
+        miscData[44] = planeCordsProjected(1);
       }
 
 
@@ -1130,15 +1158,31 @@ namespace MyController_namespace
 
 
   }
-
+  // in on_activate
   void MyController_class::taskSpaceRepulse_initHardcodedStuff(){
     repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.8), 0.4, 0.2, 0);
     repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
-    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 10);
+    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 0);
 
     pointRep rp = pointRep(Eigen::Vector3d(0.2, 1, 0), 0.2, 0.15, 15);
-    repulsionPlanes.emplace_back(rp,Eigen::Vector3d(1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(-1,1), Eigen::Vector2d(1,1), Eigen::Vector2d(1,-1));
+    repulsionPlanes.emplace_back(rp,Eigen::Vector3d(1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
 
+
+
+    //debug repulsionPlanes
+
+    for(int i = 0; i< repulsionPlanes.size();i++)
+    {
+      const auto& rPl = repulsionPlanes[i];
+      RCLCPP_INFO(get_node()->get_logger(), "\033[31m repulsion plane\033[0m %d: \033[32m dist0:\033[0m %3.2f, \033[32m dist1:\033[0m %3.2f, \033[32m dist10:\033[0m %3.2f,"
+      "\033[32m a:\033[0m%3.2f, \033[32m b:\033[0m%3.2f, \033[32m k:\033[0m%3.2f, "
+      "\033[31m planeX vector:\033[0m[ %3.3f; %3.3f; %3.3f ], \033[31m planeY vector:\033[0m[ %3.3f; %3.3f; %3.3f ] ",
+        i , rPl.centerPoint.dist0,rPl.centerPoint.dist1,rPl.centerPoint.dist10,
+        rPl.centerPoint.a,rPl.centerPoint.b,rPl.centerPoint.k ,
+        rPl.planeX.x(),rPl.planeX.y(),rPl.planeX.z(), rPl.planeY.x(),rPl.planeY.y(),rPl.planeY.z()
+      );
+
+    }
 
   }
 

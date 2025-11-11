@@ -160,12 +160,12 @@ class MyController_class : public controller_interface::ControllerInterface {
     Eigen::Vector3d planeY; // auto calculated
     Eigen::Vector2d l1;
     Eigen::Vector2d l2;
-    Eigen::Vector2d l3;
-    Eigen::Vector2d l4;
+    // Eigen::Vector2d l3;
+    // Eigen::Vector2d l4;
 
     planeRep_finite(const pointRep centerPoint_, const Eigen::Vector3d direction_, const Eigen::Vector3d planeX_,
-       const Eigen::Vector2d l1_, const Eigen::Vector2d l2_, const Eigen::Vector2d l3_, const Eigen::Vector2d l4_)
-      :  centerPoint(centerPoint_), direction(direction_), planeX(planeX_), l1(l1_), l2(l2_), l3(l3_), l4(l4_)
+       const Eigen::Vector2d l1_, const Eigen::Vector2d l2_)
+      :  centerPoint(centerPoint_), direction(direction_), planeX(planeX_), l1(l1_), l2(l2_)/*, l3(l3_), l4(l4_)*/
       {
         direction.normalize();
         planeX = (planeX - (planeX.dot(direction)) * direction);
@@ -179,6 +179,8 @@ class MyController_class : public controller_interface::ControllerInterface {
         }
 
         planeY = planeX.cross(direction);
+
+        
 
       }
   };
@@ -264,6 +266,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   static void taskSpaceRepulse_calcRepulseCoefs(pointRep &point);
   void taskSpaceRepulse_initHardcodedStuff();
   bool useJointSpaceInputs = false;
+
 
 
 };

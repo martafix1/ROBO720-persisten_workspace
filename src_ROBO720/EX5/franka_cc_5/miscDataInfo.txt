@@ -50,3 +50,25 @@ if(i == pointOfInterest){
 
     miscData[32] = repulseVector.norm();
 }
+
+
+int planeOfInterest = 0;
+if(i == planeOfInterest){
+    miscData[34] = i;
+    miscData[35] = dist;
+
+    miscData[36] = Qprojected.x();
+    miscData[37] = Qprojected.y();
+    miscData[38] = Qprojected.z();
+
+    miscData[39] = repulseVector.x();
+    miscData[40] = repulseVector.y();
+    miscData[41] = repulseVector.z();
+
+
+    miscData[42] = repulseVector.norm();
+
+    miscData[43] = planeCordsProjected(0)
+    miscData[44] = planeCordsProjected(1)
+}
+
