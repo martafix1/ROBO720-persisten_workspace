@@ -68,7 +68,11 @@ if(i == planeOfInterest){
 
     miscData[42] = repulseVector.norm();
 
-    miscData[43] = planeCordsProjected(0)
-    miscData[44] = planeCordsProjected(1)
+    miscData[43] = planeCordsProjected(0);
+    miscData[44] = planeCordsProjected(1);
+    miscData[45] = r.norm();
+
+    miscData[46] = rplane.centerPoint.dist0;
+    miscData[47] = rplane.centerPoint.dist1;
 }
 

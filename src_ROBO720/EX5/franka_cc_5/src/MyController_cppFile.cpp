@@ -1083,10 +1083,16 @@ namespace MyController_namespace
         if( std::min(rplane.l1.x(),rplane.l2.x()) < planeCordsProjected(0) && planeCordsProjected(0) < std::max(rplane.l1.x(),rplane.l2.x())   &&
             std::min(rplane.l1.y(),rplane.l2.y()) < planeCordsProjected(1) && planeCordsProjected(1) < std::max(rplane.l1.y(),rplane.l2.y())   )
         {
+          // not needed for linear repulsion
           if(dist < 1e-3){
             dist = 1e-3;
           }
+
           double U = 0.5*rplane.centerPoint.b *(1.0/dist-1.0/rplane.centerPoint.a)*rplane.centerPoint.k; 
+          
+          // linear
+          //double U = (rplane.centerPoint.dist0-dist)/rplane.centerPoint.dist1*rplane.centerPoint.k;
+
           repulseVector = rplane.direction;
           repulseVector *= U;
           totalRepulse +=repulseVector;
@@ -1120,6 +1126,10 @@ namespace MyController_namespace
 
         miscData[43] = planeCordsProjected(0);
         miscData[44] = planeCordsProjected(1);
+        miscData[45] = r.norm();
+
+        miscData[46] = rplane.centerPoint.dist0;
+        miscData[47] = rplane.centerPoint.dist1;
       }
 
 
@@ -1164,8 +1174,8 @@ namespace MyController_namespace
     repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
     repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 0);
 
-    pointRep rp = pointRep(Eigen::Vector3d(0.2, 1, 0), 0.2, 0.15, 15);
-    repulsionPlanes.emplace_back(rp,Eigen::Vector3d(1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
+    pointRep rp = pointRep(Eigen::Vector3d(0.2, 0, 1.8), 0.1, 0.05, 15);
+    repulsionPlanes.emplace_back(rp,Eigen::Vector3d(-1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
 
 
 

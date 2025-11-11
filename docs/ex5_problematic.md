@@ -31,3 +31,15 @@ As visible in the saved plots, it should work, the arm fails to approach point -
 
 It seems bit odd that most of the repulsion is reflected in the x axis. While the transformation from taskspace to jointspace is non trivial, (i guess), the other cause might be that there are different gains at different joints, therefore maybe in current configuration it is easier to move the robot away in x axis than in the others.
 
+## repulsion plane
+
+Doing this allows to better see the results of the repulsion force function on the plots.
+
+The problem with the f= ~k/x function is that it has a discontinuity at zero, and if a quickly moving arm reaches into it the force impulse is quite high.
+Also stabilisation into a steady state in the field is damepened oscilatory. 
+
+I tried to mitigate this by using f= k*x function. With the same k, the force impulse itself was smaller but the oscilations got much worse. 
+Reducig the k reduced the effect, but the arm was able to reach quite far into the field, crossing a dist of 0 in some cases. 
+
+
+

@@ -172,7 +172,7 @@ class TaskSpaceObjectivePublisher(Node):
         if cmd == "help":
             self.get_logger().info("help, status, stop, start, period <s>, ampl <1>, go, pcmd <x> <y> <z> ")
 
-        elif cmd == "status":
+        elif cmd.startswith("stat"):
             self.get_logger().info(f" Motion period: {self.motionPeriod}, Motion amplitude: {self.amplitude}, Moving: {self.moving}, Step: {self.step}, cmd freq: {1/self.timerPeriod} [Hz]")
 
         elif cmd == "stop":
@@ -192,7 +192,7 @@ class TaskSpaceObjectivePublisher(Node):
                 self.get_logger().info("Starting")
                 self.moving = True
 
-        elif cmd.startswith("period"):
+        elif cmd.startswith("period "):
             try:
                 _, val = cmd.split()
                 new_period = float(val)
