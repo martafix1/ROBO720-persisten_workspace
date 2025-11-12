@@ -83,8 +83,20 @@ namespace MyController_namespace
     std::array<double, 7> torqe_command;
 
     updateJointStates();
+
+
+    // switcheroo as they cannot be assigned.
+    for (int i = 0; i < num_joints; i++)
+    {
+      q_(i) = position_interface_values_(i);
+      qdot_(i) = velocity_interface_values_(i);
+      exertedEffort_(i) = effort_interface_values_(i);
+    }
+
+
+
     // rate limiter
-    if (rateLimiter_100 < 1000)
+    if (rateLimiter_100 < 10)
     {
       rateLimiter_100++;
     }
@@ -104,6 +116,8 @@ namespace MyController_namespace
 
     // switch from kdl JntArray to eigen for matrix operations
     // Eigen::VectorXd qdot_eigen = qdot_.data;
+
+    
 
     aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
     comp_d_.data = C_.data + G_.data;
@@ -125,6 +139,8 @@ namespace MyController_namespace
 
     // Clear the data arrays
     msg_qd_.data.clear();
+    msg_qd_dot_.data.clear();
+    msg_qdot_.data.clear();
     msg_q_.data.clear();
     msg_e_.data.clear();
     msg_tau_.data.clear();
@@ -134,6 +150,9 @@ namespace MyController_namespace
     {
       msg_qd_.data.push_back(qdot_(i));
       msg_q_.data.push_back(q_(i));
+      msg_qd_dot_.data.push_back(qd_dot_(i));
+      msg_qdot_.data.push_back(qdot_(i));
+      
       msg_e_.data.push_back(exertedEffort_(i));
       msg_tau_.data.push_back(tau_d_(i));
     }
@@ -141,8 +160,12 @@ namespace MyController_namespace
     // Publish data to topics
     pub_qd_->publish(msg_qd_);
     pub_q_->publish(msg_q_);
+    pub_qd_dot_->publish(msg_qd_dot_);
+    pub_qdot_->publish(msg_qdot_);
+    
     pub_e_->publish(msg_e_);
     pub_tau_->publish(msg_tau_);
+
 
     KDL::Frame ee_frame;
     int fk_result = fk_solver_->JntToCart(q_, ee_frame);
@@ -188,6 +211,8 @@ namespace MyController_namespace
       // Create publishers for the desired and current joint positions, velocities, and accelerations
       pub_qd_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd", 1000);
       pub_q_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("q", 1000);
+      pub_qd_dot_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qd_dot", 1000);
+      pub_qdot_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("qdot", 1000);
       pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 1000);
       pub_tau_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("tau", 1000);
       pub_EE_pos = get_node()->create_publisher<geometry_msgs::msg::PoseStamped>("EE_pos", 1000);
@@ -246,7 +271,7 @@ namespace MyController_namespace
           }
 
           taskspace_objective_point = msg->points[0];
-          RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
+          //RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
         });
 
     auto parameters_client =
@@ -437,11 +462,8 @@ namespace MyController_namespace
     C_.resize(kdl_chain_.getNrOfJoints());
     G_.resize(kdl_chain_.getNrOfJoints());
 
-    Eigen::Vector3d v_d = Eigen::Vector3d::Zero();
-    Eigen::VectorXd Kp_cartesian_ = Eigen::Vector3d(1.0, 1.0, 1.0);
-    Eigen::VectorXd Kd_cartesian_ = Eigen::VectorXd::Constant(num_joints, 5.0);
-
-
+    twist_d = Eigen::VectorXd::Constant(6, 0.0);
+    Kp_cartesian_ = Eigen::VectorXd::Constant(6, 1.0);
 
     // print kdltree, kdlchain, jointnames, jointurdfs for learning purposes
     fprintf(stderr, "Number of segments in kdl_tree_: %d\n", kdl_tree_.getNrOfSegments());
@@ -504,6 +526,8 @@ namespace MyController_namespace
     // Activate the publishers
     pub_qd_->on_activate();
     pub_q_->on_activate();
+    pub_qd_dot_->on_activate();
+    pub_qdot_->on_activate();
     pub_e_->on_activate();
     pub_tau_->on_activate();
     pub_EE_pos->on_activate();
@@ -843,52 +867,58 @@ namespace MyController_namespace
 
     case 2: // Task-space resolved-rate PD control
     {
+      Kp_.data.setConstant(0);
+      Kd_.data.setConstant(1);
+      qd_dot_.data.setConstant(0);
+      Kd_.data.setConstant(1);
       // 1. Forward kinematics
       KDL::Frame Te;
       fk_solver_->JntToCart(q_, Te);
 
       // 2. Desired and actual pose difference (full 6D)
       KDL::Frame Td = tsop_kdlFrame;
-      KDL::Twist x_err = KDL::diff(Td, Te);
+      KDL::Twist x_err = KDL::diff(Te, Td);
       Eigen::VectorXd e_x(6);
       e_x << x_err.vel.x(), x_err.vel.y(), x_err.vel.z(),
           x_err.rot.x(), x_err.rot.y(), x_err.rot.z();
 
       // 3. Desired twist (ϑd) from desired pose motion
-      KDL::Twist v_d = KDL::diff(Td, Td_prev_, period.seconds());
-      Td_prev_ = Td;
+      // KDL::Twist twist_d = KDL::diff(Td, Td_prev_, period.seconds());
 
-      Eigen::VectorXd v_d_eig(6);
-      v_d_eig << v_d.vel.x(), v_d.vel.y(), v_d.vel.z(),
-          v_d.rot.x(), v_d.rot.y(), v_d.rot.z();
+      Eigen::VectorXd twist_cmd = twist_d + Kp_cartesian_.cwiseProduct(e_x);
 
-      Eigen::VectorXd v_cmd = v_d_eig + Kp_cartesian_.cwiseProduct(e_x);
+      
 
       KDL::Jacobian J(num_joints);
-      jac_solver_->JntToJac(q_, J);
+      int ret = jac_solver_->JntToJac(q_, J);
       Eigen::MatrixXd J_eig = J.data;
       Eigen::MatrixXd J_pinv = J_eig.completeOrthogonalDecomposition().pseudoInverse();
+      //Eigen::MatrixXd J_pinv = J_eig.inverse();
 
-      Eigen::VectorXd qdot_cmd = J_pinv * v_cmd;
+      Eigen::VectorXd qdot_cmd = J_pinv * twist_cmd;
 
-      Eigen::VectorXd qdot(qdot_.data);
-      Eigen::VectorXd qddot_cmd = Kd_cartesian_.cwiseProduct(qdot_cmd - qdot);
+      //RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.2: e_x.norm(): %f, jac ret: %d, qdot_d(0-2) : %3.2f, %3.2f, %3.2f", e_x.norm(), ret, qdot_cmd(0),qdot_cmd(1),qdot_cmd(2));
 
-      // Compute dynamics and torque
-      dyn_solver_->JntToMass(q_, M_);
-      dyn_solver_->JntToCoriolis(q_, qdot_, C_);
-      dyn_solver_->JntToGravity(q_, G_);
 
-      Eigen::MatrixXd M_eig = M_.data;
-      Eigen::VectorXd tau = M_eig * qddot_cmd + C_.data + G_.data;
+      // Eigen::VectorXd qdot(qdot_.data);
+      // Eigen::VectorXd qddot_cmd = Kd_cartesian_.cwiseProduct(qdot_cmd - qdot);
+
+      // // Compute dynamics and torque
+      // dyn_solver_->JntToMass(q_, M_);
+      // dyn_solver_->JntToCoriolis(q_, qdot_, C_);
+      // dyn_solver_->JntToGravity(q_, G_);
+
+      // Eigen::MatrixXd M_eig = M_.data;
+      // Eigen::VectorXd tau = M_eig * qddot_cmd + C_.data + G_.data;
 
       for (int i = 0; i < num_joints; ++i)
-        tau_d_(i) = tau(i);
+        qd_dot_(i) = qdot_cmd(i);
 
       break;
     }
 
     default:
+    {
       for (int i = 0; i < num_joints; i++)
       {
         qd_(i) = qd_(i);

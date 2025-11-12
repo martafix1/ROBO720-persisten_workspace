@@ -22,7 +22,7 @@
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chainiksolverpos_lma.hpp>
 #include <kdl/chainjnttojacsolver.hpp>
-#include <chainjnttojacdotsolver.hpp>
+#include <kdl/chainjnttojacdotsolver.hpp>
 
 
 // Trajectory point
@@ -133,15 +133,16 @@ class MyController_class : public controller_interface::ControllerInterface {
   KDL::JntArray comp_d_;
   KDL::JntArray tau_d_;
   
-  xdot_d = Eigen::VectorXd::Zero(6);
-  xddot_d = Eigen::VectorXd::Zero(6);
+  // xdot_d = Eigen::VectorXd::Zero(6);
+  // xddot_d = Eigen::VectorXd::Zero(6);
     
   // gains
   KDL::JntArray Kp_, Ki_, Kd_;
 
-  // Prev frame
-  KDL::FrameTd_prev_;
 
+  //gorkems controll
+  Eigen::VectorXd twist_d; 
+  Eigen::VectorXd Kp_cartesian_;
 
   // for path planning
   int pathSteps_1 = 0;
@@ -161,6 +162,8 @@ class MyController_class : public controller_interface::ControllerInterface {
   // Publishers
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qd_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_q_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qd_dot_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_qdot_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_e_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_tau_;
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_EE_pos;
@@ -169,6 +172,8 @@ class MyController_class : public controller_interface::ControllerInterface {
   // messages
   std_msgs::msg::Float64MultiArray msg_qd_;
   std_msgs::msg::Float64MultiArray msg_q_;  
+  std_msgs::msg::Float64MultiArray msg_qd_dot_;
+  std_msgs::msg::Float64MultiArray msg_qdot_;
   std_msgs::msg::Float64MultiArray msg_e_;
   std_msgs::msg::Float64MultiArray msg_tau_;
 
