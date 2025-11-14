@@ -1,7 +1,0 @@
-# Request
-geometry_msgs/PoseStamped target_pose
----
-# Response
-sensor_msgs/JointState solution
-bool success
-string error_message

@@ -389,30 +389,6 @@ namespace MyController_namespace
       RCLCPP_INFO(get_node()->get_logger(), "Constructed kdl tree");
     }
 
-    // Get the root and tip link names from the parameter server
-    // If the parameter is not found, return an error
-
-    //  std::string root_name, tip_name; // more yaml parameters begone
-    // if (get_node()->has_parameter("root_link"))
-    // {
-    //   root_name = get_node()->get_parameter("root_link").as_string();
-    //   RCLCPP_INFO(get_node()->get_logger(), "Found root link name form yaml: %s", root_name.c_str());
-    // }
-    // else
-    // {
-    //   RCLCPP_ERROR(get_node()->get_logger(), "Could not find root link name");
-    //   return CallbackReturn::ERROR;
-    // }
-    // if (get_node()->has_parameter("tip_link"))
-    // {
-    //   tip_name = get_node()->get_parameter("tip_link").as_string();
-    //   RCLCPP_INFO(get_node()->get_logger(), "Found tip link name form yaml: %s", tip_name.c_str());
-    // }
-    // else
-    // {
-    //   RCLCPP_ERROR(get_node()->get_logger(), "Could not find tip link name");
-    //   return CallbackReturn::ERROR;
-    // }
 
     // Get the KDL chain from the KDL tree
     // if kdl tree has no chain from root to tip, return error
@@ -558,14 +534,6 @@ namespace MyController_namespace
     pub_EE_pos->on_activate();
     pub_misc->on_activate();
 
-    // init IK service:
-
-    ik_service_ = get_node()->create_service<franka_cc_6::srv::ComputeIK>(
-        "compute_ik",
-        std::bind(&MyController_class::computeIKCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-    RCLCPP_INFO(get_node()->get_logger(), "Node name: %s", get_node()->get_name());
-    RCLCPP_INFO(get_node()->get_logger(), "IK service created");
 
     RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
     if(useJointSpaceInputs)
@@ -641,44 +609,6 @@ namespace MyController_namespace
     }
   }
 
-  void MyController_class::computeIKCallback(
-      const std::shared_ptr<franka_cc_6::srv::ComputeIK::Request> request,
-      std::shared_ptr<franka_cc_6::srv::ComputeIK::Response> response)
-  {
-    RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "Got IK request");
-    // RCLCPP_INFO(get_node()->get_logger(), "Got IK request");
-    const auto &pose_msg = request->target_pose.pose;
-
-    KDL::Rotation rotation = KDL::Rotation::Quaternion(pose_msg.orientation.x, pose_msg.orientation.y, pose_msg.orientation.z, pose_msg.orientation.w);
-    KDL::Frame target = KDL::Frame(rotation, KDL::Vector(pose_msg.position.x, pose_msg.position.y, pose_msg.position.z));
-
-    // tf2::fromMsg(request->target_pose.pose, target);   //tf2 does not work for some reason
-    KDL::JntArray initial_guess(num_joints);
-    initial_guess = q_;
-    // Set initial guess (you might want to use current joint positions)
-
-    KDL::JntArray result(num_joints);
-
-    int ret = ik_solver_->CartToJnt(initial_guess, target, result);
-    RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "IK: CartToJnt returned %d", ret);
-    // RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
-    if (ret >= 0)
-    {
-      response->solution.name = joint_names_; // provide your joint names
-      response->solution.position.resize(num_joints);
-      for (size_t i = 0; i < num_joints; ++i)
-      {
-        response->solution.position[i] = result(i);
-      }
-      response->success = true;
-    }
-    else
-    {
-      response->success = false;
-      response->error_message = "IK failed with code: " + std::to_string(ret);
-    }
-    RCLCPP_INFO(rclcpp::get_logger("compute_ik_service"), "Service done");
-  }
 
   void MyController_class::TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps)
   {

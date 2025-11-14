@@ -18,21 +18,13 @@ find_package(urdf REQUIRED)
 find_package(kdl_parser REQUIRED)
 
 
-# for the services
+# Message/geometry dependencies
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_kdl REQUIRED)
 find_package(orocos_kdl REQUIRED)
-
-# Generate service code (muse tbe ebfore add library)
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "srv/ComputeIK.srv"
-  DEPENDENCIES geometry_msgs sensor_msgs
-)
-# ament_export_targets(${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 # Add your controller library
 add_library(${PROJECT_NAME}_lib SHARED
@@ -67,7 +59,6 @@ ament_target_dependencies(${PROJECT_NAME}_lib
 
 target_link_libraries(${PROJECT_NAME}_lib
   orocos-kdl
-  ${PROJECT_NAME}__rosidl_typesupport_cpp
 )
 
 # Export the plugin
@@ -105,7 +96,6 @@ endif()
 ament_export_libraries(${PROJECT_NAME}_lib)
 ament_export_dependencies(
   controller_interface
-  rosidl_default_runtime
   rclcpp
   rclcpp_lifecycle
   pluginlib

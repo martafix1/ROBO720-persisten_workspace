@@ -42,7 +42,6 @@
 // Service
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
-#include "franka_cc_6/srv/compute_ik.hpp"
 // #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 // #include <tf2/LinearMath/Transform.hpp>
 #include <kdl/chainfksolverpos_recursive.hpp>
@@ -83,11 +82,6 @@ class MyController_class : public controller_interface::ControllerInterface {
   Vector7d velocity_interface_values_;
   Vector7d effort_interface_values_;
   
-  // service
-  rclcpp::Service<franka_cc_6::srv::ComputeIK>::SharedPtr ik_service_;
-  void computeIKCallback(
-    const std::shared_ptr<franka_cc_6::srv::ComputeIK::Request> request,
-    std::shared_ptr<franka_cc_6::srv::ComputeIK::Response> response);
   
 
   // KDL
