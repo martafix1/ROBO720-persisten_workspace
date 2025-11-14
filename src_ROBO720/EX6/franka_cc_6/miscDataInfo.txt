@@ -1,0 +1,78 @@
+
+ex3_smartControllers():
+
+if (!taskspace_objective_point.transforms.empty())
+    miscData[1] = position.data.x();
+    miscData[2] = position.data.y();
+    miscData[3] = position.data.z();
+
+ex3_smartControllers():case1:
+miscData[4] = pathSteps_1;
+
+InverseK():
+miscData[5] = frameDiff;
+miscData[6] = tolerance;
+miscData[7] = ik_ee_target_diff;
+miscData[8] = 0/1/2, init_guess for IK,  0 = current joint init guess worked, 1 = fallback to center position, 2 = total IK failure
+
+
+jointLimitRepulse():
+if(i == 0){
+    miscData[12] = distLim;
+    miscData[13] = direction;
+    miscData[14] = viscosity;
+    miscData[15] = repulse;
+
+    }
+
+
+taskSpaceRepulse():
+miscData[18] = ee_frame.p.x();
+miscData[19] = ee_frame.p.y();
+miscData[20] = ee_frame.p.z();
+
+miscData[21] = totalRepulse.x();
+miscData[22] = totalRepulse.y();
+miscData[23] = totalRepulse.z();
+
+int pointOfInterest = 2;totalRepulse +=repulseVector;
+if(i == pointOfInterest){
+    miscData[24] = i;
+    miscData[25] = dist;
+
+    miscData[26] = rp.x.x();
+    miscData[27] = rp.x.y();
+    miscData[28] = rp.x.z();
+
+    miscData[29] = repulseVector.x();
+    miscData[30] = repulseVector.y();
+    miscData[31] = repulseVector.z();
+
+    miscData[32] = repulseVector.norm();
+}
+
+
+int planeOfInterest = 0;
+if(i == planeOfInterest){
+    miscData[34] = i;
+    miscData[35] = dist;
+
+    miscData[36] = Qprojected.x();
+    miscData[37] = Qprojected.y();
+    miscData[38] = Qprojected.z();
+
+    miscData[39] = repulseVector.x();
+    miscData[40] = repulseVector.y();
+    miscData[41] = repulseVector.z();
+
+
+    miscData[42] = repulseVector.norm();
+
+    miscData[43] = planeCordsProjected(0);
+    miscData[44] = planeCordsProjected(1);
+    miscData[45] = r.norm();
+
+    miscData[46] = rplane.centerPoint.dist0;
+    miscData[47] = rplane.centerPoint.dist1;
+}
+
