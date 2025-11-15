@@ -102,6 +102,8 @@ namespace MyController_namespace
 
     }
 
+    fk_solver_->JntToCart(q_, x_);
+
     // required for potential fields:
     qd_dot_.data.setZero();
 
@@ -115,7 +117,7 @@ namespace MyController_namespace
     {
       rateLimiter_10_1 = 0;
       if(!useJointSpaceInputs){
-        ex3_smarterControllers(3); // 100Hz
+        ex3_smarterControllers(controllerType); // 100Hz
       } 
     }
 
@@ -519,6 +521,8 @@ namespace MyController_namespace
     Ki_.data.setConstant(0);
     Kd_.data.setConstant(1);
 
+    twist_d.resize(6);
+
     // for (int i = 0; i < SaveDataMax; i++) {
     //   SaveData_[i] = 0.0;
     // }
@@ -556,6 +560,7 @@ namespace MyController_namespace
     #endif
     #endif
 
+    ex3_Init_smarterControllers(controllerType);
 
     return CallbackReturn::SUCCESS;
   }
@@ -764,6 +769,51 @@ namespace MyController_namespace
 
   }
 
+  void MyController_class::ex3_Init_smarterControllers(int controllerType){
+    double w = 2; //rad/s
+    double damp = 1; // relative
+
+    switch (controllerType)
+    {
+    case 2:
+      {
+
+      Kp_.data.setConstant(0);
+      Kd_.data.setConstant(1);
+      qd_dot_.data.setConstant(0);
+      Kp_cartesian_.resize(6);
+      Kd_cartesian_.resize(6);
+      Kp_cartesian_.setConstant(w*w);
+      Kd_cartesian_.setConstant(w*damp*2);
+
+        break;
+      }
+    
+    case 3:
+      {
+        //setup necesities for torque controller
+      
+      // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
+      // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
+      Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      // Kp_.data.setConstant(w*w);
+      // Ki_.data.setConstant(0);
+      // Kd_.data.setConstant(w*damp*2);
+      qd_dot_.data.setConstant(0);
+
+
+        break;
+      }
+    
+    default:
+      RCLCPP_ERROR(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m UNKNOWN controller \033[0m type %d",controllerType);
+      break;
+    }
+
+
+  }
+
 
   void MyController_class::ex3_smarterControllers(int controllerType)
   {
@@ -799,21 +849,61 @@ namespace MyController_namespace
     switch (controllerType)
     {
 
+     case 2: // Task-space resolved-rate PD control
+    {
+
+      // 1. Forward kinematics
+      KDL::Frame Te;
+      
+
+      // 2. Desired and actual pose difference (full 6D)
+      KDL::Frame Td = tsop_kdlFrame;
+      KDL::Twist x_err = KDL::diff(x_, Td);
+      Eigen::VectorXd e_x(6);
+      e_x << x_err.vel.x(), x_err.vel.y(), x_err.vel.z(),
+          x_err.rot.x(), x_err.rot.y(), x_err.rot.z();
+
+      // 3. Desired twist (ϑd) from desired pose motion
+      // KDL::Twist twist_d = KDL::diff(Td, Td_prev_, period.seconds());
+
+      Eigen::VectorXd twist_cmd = twist_d + e_x.cwiseProduct(Kp_cartesian_);
+
+      
+
+      KDL::Jacobian J(num_joints);
+      int ret = jac_solver->JntToJac(q_, J);
+      Eigen::MatrixXd J_eig = J.data;
+      Eigen::MatrixXd J_pinv = J_eig.completeOrthogonalDecomposition().pseudoInverse();
+      //Eigen::MatrixXd J_pinv = J_eig.inverse();
+
+      Eigen::VectorXd qdot_cmd = J_pinv * ( twist_cmd.cwiseProduct(Kd_cartesian_)) ;
+
+      //RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.2: e_x.norm(): %f, jac ret: %d, qdot_d(0-2) : %3.2f, %3.2f, %3.2f", e_x.norm(), ret, qdot_cmd(0),qdot_cmd(1),qdot_cmd(2));
+
+
+      // Eigen::VectorXd qdot(qdot_.data);
+      // Eigen::VectorXd qddot_cmd = Kd_cartesian_.cwiseProduct(qdot_cmd - qdot);
+
+      // // Compute dynamics and torque
+      // dyn_solver_->JntToMass(q_, M_);
+      // dyn_solver_->JntToCoriolis(q_, qdot_, C_);
+      // dyn_solver_->JntToGravity(q_, G_);
+
+      // Eigen::MatrixXd M_eig = M_.data;
+      // Eigen::VectorXd tau = M_eig * qddot_cmd + C_.data + G_.data;
+
+      for (int i = 0; i < num_joints; ++i)
+        qd_dot_(i) = qdot_cmd(i);
+
+      break;
+    }
+  
+
     case 3: // jointSpaceController
     {
       KDL::Frame target = tsop_kdlFrame;
       
-      //setup necesities for torque controller
-      double w = 2; //rad/s
-      double damp = 1; // relative
-      // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
-      // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
-      Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      // Kp_.data.setConstant(w*w);
-      // Ki_.data.setConstant(0);
-      // Kd_.data.setConstant(w*damp*2);
-      qd_dot_.data.setConstant(0);
+      
       
       
       

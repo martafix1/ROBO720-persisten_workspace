@@ -121,6 +121,13 @@ class MyController_class : public controller_interface::ControllerInterface {
     
   // gains
   KDL::JntArray Kp_, Ki_, Kd_;
+
+
+  Eigen::VectorXd Kp_cartesian_, Kd_cartesian_;
+  // EEf
+  KDL::Frame x_, xd_;
+  Eigen::VectorXd twist_d; //6
+
   
 
   // for path planning
@@ -241,12 +248,15 @@ class MyController_class : public controller_interface::ControllerInterface {
   float acc_lim_MAX[7] = {2.1750,2.1750,3.15,3.15,3.15,3.15,3.15};
 
 
-  float PIreg_I[7] = {0};
+  // float PIreg_I[7] = {0};
   // added for RLCPP throtle
   rclcpp::Clock::SharedPtr node_clock_;
   
+  int controllerType = 2; //SET this to select controller type
+
   void updateJointStates();
   void ex3_smarterControllers(int controllerType);
+  void ex3_Init_smarterControllers(int controllerType);
   int InverseK(KDL::Frame target, KDL::JntArray &result);
   void TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps);
   double compareFrames(KDL::Frame a, KDL::Frame b);
