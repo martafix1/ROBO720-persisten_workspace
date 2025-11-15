@@ -39,6 +39,7 @@ setup(
             'node4 = pathing_py6.node4:main', #add this
             'node5 = pathing_py6.node5_JointSpaceArbiter:main', #add this
             'node5_JointSpaceArbiter = pathing_py6.node5_JointSpaceArbiter:main', #add this
+            'cutPizza = pathing_py6.cutPizza:main', #add this
         ],
     },
 )
