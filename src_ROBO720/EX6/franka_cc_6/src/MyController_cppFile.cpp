@@ -903,9 +903,7 @@ namespace MyController_namespace
     {
       KDL::Frame target = tsop_kdlFrame;
       
-      
-      
-      
+
       
       double TaskSpaceError =  compareFrames(lastTarget,target);
       miscData[0] = TaskSpaceError;

@@ -1,3 +1,6 @@
+#colcon build --packages-select pathing_py6
+#source install/setup.bash 
+#ros2 run pathing_py6 cutPizza
 import rclpy
 from rclpy.node import Node
 from trajectory_msgs.msg import MultiDOFJointTrajectory, MultiDOFJointTrajectoryPoint
@@ -7,7 +10,7 @@ import time
 import numpy as np
 import threading
 import scipy
-
+print(f" SCIPY ver: {scipy.__version__}") 
 
 position_lim_MAX = [ 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973]
 position_lim_MIN = [-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973]
@@ -19,11 +22,6 @@ center_pos = (max_pos + min_pos)/2
 range_of_motion = max_pos-min_pos
 
 
-
-
-
-
-        
 
 class TaskSpaceObjectivePublisher(Node):
     def __init__(self):
@@ -229,7 +227,8 @@ class TaskSpaceObjectivePublisher(Node):
             elapsed_start = now - self.timeRestart
             
 
-            runTime_now = now - elapsed_start - self.timeInPause
+            runTime_now = elapsed_start - self.timeInPause
+            self.get_logger().info(f"First: init done: {self.initDone},  index: {self.currentIndex}, runTime_now: {runTime_now}, elapsed_start: {elapsed_start}, real time {now}")
 
 
             if self.moving == False:
@@ -241,9 +240,12 @@ class TaskSpaceObjectivePublisher(Node):
             else:
                 workingSequence = self.loopSeq
 
+            #self.get_logger().info(f"First: init done: {self.initDone},  index: {self.currentIndex}, runTime_now: {runTime_now}, real time {now}")
+
             duration, func_name = workingSequence[self.currentIndex]
             nextCommandTime = self.sumPrevDurations + duration
             while runTime_now > nextCommandTime: # move index if we late, sum duration
+                self.get_logger().info(f"Whiling: init done: {self.initDone},  previous_index: {self.currentIndex}, runTime_now: {runTime_now}, real time {now}")
                 self.currentIndex +=1
                 self.sumPrevDurations += duration
                 if self.currentIndex >= len(workingSequence):
@@ -265,13 +267,14 @@ class TaskSpaceObjectivePublisher(Node):
                     self.timeRestart = self.get_clock().now().nanoseconds / 1e9
                     now = self.get_clock().now().nanoseconds / 1e9
                     elapsed_start = now - self.timeRestart
-                    runTime_now = now - elapsed_start - self.timeInPause
-                    
-            
+                    runTime_now = elapsed_start - self.timeInPause
+
             duration, func_name = workingSequence[self.currentIndex] #make sure we have the correct command after all that could have happend
 
             fp_time = now-runTime_now;
             fp_duration = duration
+
+            self.get_logger().info(f"Final: init done: {self.initDone},  index: {self.currentIndex}, reciepeie time: {fp_time}, real time {now}")
 
             if func_name == "arm":
                 self.xd_pos = self.x__restPosition
@@ -305,7 +308,7 @@ class TaskSpaceObjectivePublisher(Node):
 
             # Construct orthonormal frame
             x_axis = np.cross(tmp, z_axis)
-            x_axis /= np.linalg.norm(x_axis)
+            x_axis = x_axis / np.linalg.norm(x_axis) #must be like this to autocast float
             y_axis = np.cross(z_axis, x_axis)
 
             # Apply roll around z
