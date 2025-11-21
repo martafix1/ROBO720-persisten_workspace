@@ -1,16 +1,17 @@
-#colcon build --packages-select pathing_py6
-#source install/setup.bash 
-#ros2 run pathing_py6 cutPizza
+#   colcon build --packages-select pathing_py6
+#   source install/setup.bash 
+#   ros2 run pathing_py6 cutPizza
 import rclpy
 from rclpy.node import Node
 from trajectory_msgs.msg import MultiDOFJointTrajectory, MultiDOFJointTrajectoryPoint
 from geometry_msgs.msg import Transform, Twist
 from tf_transformations import quaternion_from_euler
+from std_msgs.msg import Int32, Float32, Float32MultiArray
 import time
 import numpy as np
 import threading
 import scipy
-print(f" SCIPY ver: {scipy.__version__}") 
+print(f" SCIPY ver: {scipy.__version__}")   
 
 position_lim_MAX = [ 2.8973, 1.7628, 2.8973,-0.0698, 2.8973, 3.7525, 2.8973]
 position_lim_MIN = [-2.8973,-1.7628,-2.8973,-3.0718,-2.8973,-0.0175,-2.8973]
@@ -21,13 +22,27 @@ min_pos= np.array(position_lim_MIN)
 center_pos = (max_pos + min_pos)/2
 range_of_motion = max_pos-min_pos
 
+# Gain scaling arrays (from the C++ controller)
+Kp_joint_scale = np.array([2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0])
+Kd_joint_scale = np.array([2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0])
+Kp_cart_scale = np.ones(6)  # All 1.0 for cartesian
+Kd_cart_scale = np.ones(6)  # All 1.0 for cartesian
+jointCenteringRepulsion_scale = np.array([1.0, 0.1, 3.0, 0.5, 1.0, 1.0, 1.0])  # Per-joint scaling
+
+# Default gain values
+default_Kp_joint = 2.0
+default_Kd_joint = 1.0
+default_Kp_cart = 2.0
+default_Kd_cart = 1.0
+default_jointCenteringRepulsion = 1.0
+
 
 
 class TaskSpaceObjectivePublisher(Node):
     def __init__(self):
         try:
             # pizza stuff
-            self.x__pizza_center = np.array([0.4, 0, 1.4])
+            self.x__pizza_center = np.array([0.45, 0, 1.4])
             self.x__pizza_cutting_direction = np.array([0,0,-1])
             self.pizza_radius = 0.2 
             self.x__restPosition  = self.x__pizza_center - 0.2*self.x__pizza_cutting_direction
@@ -37,16 +52,25 @@ class TaskSpaceObjectivePublisher(Node):
             # pizza cutting sequence
             # List of commands: (duration_in_seconds, function_name_as_string)
             pizzaCutSequence1_init = [
+                (0.03, 'dbg_describe_pizza'),
                 (5, 'arm'),
-                (1, 'wait'),
+                (2, 'wait'),
             ]
             pizzaCutSequence1 = [
+                (0.03, 'dbg_pizza_line_points'),
                 (2, 'approach'),
                 (1, 'wait'),
                 (3.0, 'cutLine'),
                 (1, 'wait'),
                 (1.5, 'retract'),
                 (1, 'wait'),
+            ]
+
+            debug1 = [
+                (5, 'arm'),
+                (5, 'wait'),
+                (5, 'debug1'),
+                (5, 'wait'),
             ]
 
 
@@ -57,9 +81,12 @@ class TaskSpaceObjectivePublisher(Node):
 
             self.currentLine = 0
             self.maxLines = 4
+            self.slowDownConst = 1
 
             self.initSeq = pizzaCutSequence1_init
             self.loopSeq = pizzaCutSequence1
+            # self.initSeq = debug1
+            # self.loopSeq = debug1
 
 
             #control stuff
@@ -74,6 +101,15 @@ class TaskSpaceObjectivePublisher(Node):
                 super().__init__('taskspace_objective')
                 
                 self.publisher_ = self.create_publisher(MultiDOFJointTrajectory, '/taskspace_objective', 10) # must be Trajectory not just point coz point is not top level message and will crash
+                
+                # Create publishers for controller parameters
+                self.pub_controller_type = self.create_publisher(Int32, '/controller_type', 10)
+                self.pub_jointCenteringRepulsion = self.create_publisher(Float32MultiArray, '/jointCenteringRepulsion', 10)
+                self.pub_Kp_joint = self.create_publisher(Float32MultiArray, '/Kp_joint', 10)
+                self.pub_Kd_joint = self.create_publisher(Float32MultiArray, '/Kd_joint', 10)
+                self.pub_Kp_cart = self.create_publisher(Float32MultiArray, '/Kp_cart', 10)
+                self.pub_Kd_cart = self.create_publisher(Float32MultiArray, '/Kd_cart', 10)
+                
                 self.timerPeriod = 1/50
                 self.timer = self.create_timer(self.timerPeriod, self.timer_callback)
                 
@@ -83,6 +119,9 @@ class TaskSpaceObjectivePublisher(Node):
 
                 # Give the publisher some time to set up
                 time.sleep(1)
+                
+                # Publish default values at init
+                self._publish_defaults()
             except Exception as e:
                 print(f" Error during TaskSpaceObjectivePublisher init: {e}")
 
@@ -90,9 +129,53 @@ class TaskSpaceObjectivePublisher(Node):
             self.timeRestart = self.get_clock().now().nanoseconds / 1e9
             self.timePauseStart = 0
             self.timeInPause = 0
+            self.prevIndex = -69
             self.moving = True
         except Exception as e:
             print(f" Init expeption: {e}")
+
+    def _publish_defaults(self):
+        """Publish default values to all controller parameter topics."""
+        try:
+            # Publish default controller type
+            msg_ct = Int32()
+            msg_ct.data = 2
+            self.pub_controller_type.publish(msg_ct)
+            
+            # Publish default joint centering repulsion (per-joint array)
+            jcr_values = (default_jointCenteringRepulsion * jointCenteringRepulsion_scale).astype(np.float32).tolist()
+            msg_jcr = Float32MultiArray()
+            msg_jcr.data = jcr_values
+            self.pub_jointCenteringRepulsion.publish(msg_jcr)
+            
+            # Publish default Kp_joint
+            kpj_values = (default_Kp_joint * Kp_joint_scale).astype(np.float32).tolist()
+            msg_kpj = Float32MultiArray()
+            msg_kpj.data = kpj_values
+            self.pub_Kp_joint.publish(msg_kpj)
+            
+            # Publish default Kd_joint
+            kdj_values = (default_Kd_joint * Kd_joint_scale).astype(np.float32).tolist()
+            msg_kdj = Float32MultiArray()
+            msg_kdj.data = kdj_values
+            self.pub_Kd_joint.publish(msg_kdj)
+            
+            # Publish default Kp_cart
+            kpc_values = (default_Kp_cart * Kp_cart_scale).astype(np.float32).tolist()
+            msg_kpc = Float32MultiArray()
+            msg_kpc.data = kpc_values
+            self.pub_Kp_cart.publish(msg_kpc)
+            
+            # Publish default Kd_cart
+            kdc_values = (default_Kd_cart * Kd_cart_scale).astype(np.float32).tolist()
+            msg_kdc = Float32MultiArray()
+            msg_kdc.data = kdc_values
+            self.pub_Kd_cart.publish(msg_kdc)
+            
+            self.get_logger().info("Default controller parameters published.")
+        except Exception as e:
+            self.get_logger().error(f"Error publishing defaults: {e}")
+
 
 
     def definePizzaMathematically(self):
@@ -121,6 +204,8 @@ class TaskSpaceObjectivePublisher(Node):
         self.pizza_vect1 = v1
         self.pizza_vect2 = v2
 
+
+
     # returns the point
     def getPizzaPoint(self,angle_deg,radiusScale=1) -> np.ndarray:
         center = self.x__pizza_center
@@ -133,12 +218,12 @@ class TaskSpaceObjectivePublisher(Node):
         v2 = self.pizza_vect2
 
         #points = center + radius * (np.outer(np.cos(t), v1) + np.outer(np.sin(t), v2)) # outer is if t were a vector
-        point = center + radius* np.cos(angle)*v1 + np.sin(angle)*v2
+        point = center + radius* np.cos(angle)*v1 + radius*np.sin(angle)*v2
 
         return point
 
 
-    def cutPizzaLine(self, time, time_per_movement=3, n_line = 0, n_lines_max = 4):
+    def cutPizzaLine(self, time, time_per_movement=3.0, n_line = 0, n_lines_max = 4):
         
         currentLineAngle_deg = (n_line/n_lines_max)*180 #180 so the lines dont overlap
 
@@ -151,6 +236,7 @@ class TaskSpaceObjectivePublisher(Node):
 
         pos = (point2-point1)*progress + point1
 
+        # self.get_logger().info(f"cutPizzaLine: p1: {np.round(point1,3)}, p2: {np.round(point2,3)}, vel: {np.round(vel,3)}, progress: {progress :.3}, pos: {np.round(pos,3)}")
 
         
         self.xd_pos = pos
@@ -225,10 +311,12 @@ class TaskSpaceObjectivePublisher(Node):
         try:
             now = self.get_clock().now().nanoseconds / 1e9
             elapsed_start = now - self.timeRestart
+
+            prevIndex = self.currentIndex
             
 
             runTime_now = elapsed_start - self.timeInPause
-            self.get_logger().info(f"First: init done: {self.initDone},  index: {self.currentIndex}, runTime_now: {runTime_now}, elapsed_start: {elapsed_start}, real time {now}")
+            #self.get_logger().info(f"First: init done: {self.initDone},  index: {self.currentIndex}, runTime_now: {runTime_now}, elapsed_start: {elapsed_start}, real time {now}")
 
 
             if self.moving == False:
@@ -243,25 +331,26 @@ class TaskSpaceObjectivePublisher(Node):
             #self.get_logger().info(f"First: init done: {self.initDone},  index: {self.currentIndex}, runTime_now: {runTime_now}, real time {now}")
 
             duration, func_name = workingSequence[self.currentIndex]
-            nextCommandTime = self.sumPrevDurations + duration
+            nextCommandTime = self.sumPrevDurations + duration*self.slowDownConst
             while runTime_now > nextCommandTime: # move index if we late, sum duration
-                self.get_logger().info(f"Whiling: init done: {self.initDone},  previous_index: {self.currentIndex}, runTime_now: {runTime_now}, real time {now}")
+                #self.get_logger().info(f"Whiling: init done: {self.initDone},  previous_index: {self.currentIndex}, runTime_now: {runTime_now}, real time {now}")
                 self.currentIndex +=1
-                self.sumPrevDurations += duration
+                self.sumPrevDurations += duration*self.slowDownConst
                 if self.currentIndex >= len(workingSequence):
                     break;
                 duration, func_name = workingSequence[self.currentIndex]
-                nextCommandTime = self.sumPrevDurations + duration
+                nextCommandTime = self.sumPrevDurations + duration*self.slowDownConst
 
 
             if self.currentIndex >= len(workingSequence): # switch to loop or increase line index, also reset all times as the sequence starts anew anyway
                     if not self.initDone:
                         workingSequence = self.loopSeq
-                        self.sumPrevDurations = 0
+                        self.initDone = True
                         
                     else:
                         self.currentLine = (self.currentLine+1)%self.maxLines
                     
+                    self.currentIndex = 0
                     self.sumPrevDurations = 0
                     self.timeInPause = 0
                     self.timeRestart = self.get_clock().now().nanoseconds / 1e9
@@ -271,16 +360,40 @@ class TaskSpaceObjectivePublisher(Node):
 
             duration, func_name = workingSequence[self.currentIndex] #make sure we have the correct command after all that could have happend
 
-            fp_time = now-runTime_now;
-            fp_duration = duration
+            # function parameters
+            fp_time = runTime_now-self.sumPrevDurations; 
+            fp_duration = duration*self.slowDownConst
 
-            self.get_logger().info(f"Final: init done: {self.initDone},  index: {self.currentIndex}, reciepeie time: {fp_time}, real time {now}")
+            #self.get_logger().info(f"Final: init done: {self.initDone},  index: {self.currentIndex}, reciepeie time: {fp_time}, real time {now}")
 
+
+
+            
             if func_name == "arm":
                 self.xd_pos = self.x__restPosition
                 self.xd_dir = np.array([0,0,-1])
                 self.xd_roll = 0
+                
                 pass
+            elif func_name == "dbg_describe_pizza":
+                self.get_logger().info(f" \033[45m Pizza has been mathematically defined: \033[0m \n"
+                                       f" center: {self.x__pizza_center} \n"
+                                       f" radius: {self.pizza_radius} \n"
+                                       f" cutting direction: {self.x__pizza_cutting_direction} \n"
+                                       f" vect1: {self.pizza_vect1}  \n" 
+                                       f" vect2: {self.pizza_vect2}  \n" 
+                                        )
+            elif func_name == "dbg_pizza_line_points":
+                currentLineAngle_deg = (self.currentLine/self.maxLines)*180 #180 so the lines dont overlap
+                point1 = self.getPizzaPoint(currentLineAngle_deg,1.1)
+                point2 = self.getPizzaPoint(currentLineAngle_deg+180,1.1)
+
+                self.get_logger().info(f" \033[45m Current pizza cut line: \033[0m \n"
+                                       f" line: {self.currentLine} / {self.maxLines}  \n"
+                                       f" currentAngle: {currentLineAngle_deg} \n"
+                                       f" point1: {np.round(point1,2)}  \n" 
+                                       f" point2: {np.round(point2,2)}  \n" 
+                                        )    
             elif func_name == "wait":
                 pass
             elif func_name == "approach":
@@ -292,11 +405,24 @@ class TaskSpaceObjectivePublisher(Node):
             elif func_name == "retract":
                 self.retractFromPizzaPoint(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
+
+
+            elif func_name == "debug1":
+                self.xd_pos = [0.1, 0.1 ,1.6]
+                self.xd_dir = np.array([0,0,-1])
+                self.xd_roll = 0
+                pass    
             else:
                 self.get_logger().warn(f"Unknown function in sequence: '{func_name}'")
 
-
             
+
+            if self.prevIndex != self.currentIndex:
+                self.get_logger().info(f"Index change: init done: {self.initDone},  index: {self.currentIndex}, reciepeie time: {runTime_now :.1f}, function:  {func_name}, pizzaLine: {self.currentLine}")
+                self.prevIndex = self.currentIndex
+                self.get_logger().info(f"... xd_pos: {self.xd_pos[0] :.3f} {self.xd_pos[1] :.2f} {self.xd_pos[2] :.2f}")
+                pass
+
             # solve problems with rotations (x is first for roll 0, then y)
             
             z_axis = self.xd_dir #pointing direction is usually z axis
@@ -366,7 +492,6 @@ class TaskSpaceObjectivePublisher(Node):
             self.get_logger().error(f"Error in timer_callback: {e}")
 
 
-
     def _start_input_thread(self):
         thread = threading.Thread(target=self._input_loop, daemon=True)
         thread.start()
@@ -386,10 +511,20 @@ class TaskSpaceObjectivePublisher(Node):
 
     def _handle_command(self, cmd: str):
         if cmd == "help":
-            self.get_logger().info("help, status, stop, start, period <s>, ampl <1>, go, pcmd <x> <y> <z> ")
-
-        # elif cmd.startswith("stat"):
-        #     self.get_logger().info(f" Motion period: {self.motionPeriod}, Motion amplitude: {self.amplitude}, Moving: {self.moving}, Step: {self.step}, cmd freq: {1/self.timerPeriod} [Hz]")
+            self.get_logger().info(
+                """
+            \033[33mCommands:\033[0m
+            help            print help
+            stat            print current values and states
+            stop            stop movement
+            start           start movement
+            ct <int>        select controller
+            jcr <float>     select joint cenetering repulsion scaler
+            kpj <float>     select joint space Kp
+            kdj <float>     select joint space Kd
+            kpc <float>     select task space Kp
+            kdc <float>     select task space Kd
+            """)
 
         elif cmd == "stop":
             if self.moving == False:
@@ -399,61 +534,83 @@ class TaskSpaceObjectivePublisher(Node):
                 self.moving = False
             
         elif cmd == "start":
-            # if self.followPositionCommand:
-            #     self.get_logger().info("Not following position command anymore")
-            #     self.followPositionCommand = False
             if self.moving == True:
                 self.get_logger().info("Already moving")
             else:
                 self.get_logger().info("Starting")
                 self.moving = True
-
-        # elif cmd.startswith("period "):
-        #     try:
-        #         _, val = cmd.split()
-        #         new_period = float(val)
-        #         self.motionPeriod = new_period
-        #         self.get_logger().info(f"Motion period set to {new_period} seconds.")
-        #     except Exception as e:
-        #         self.get_logger().warn(f"Invalid period command: {e}")
-
-        # elif cmd.startswith("ampl "):
-        #     try:
-        #         _, val = cmd.split()
-        #         new_amplitude = float(val)
-        #         self.amplitude = new_amplitude
-        #         self.get_logger().info(f"Motion amplitude set to {new_amplitude}.")
-        #     except Exception as e:
-        #         self.get_logger().warn(f"Invalid period command: {e}")
-
-        # elif cmd.startswith("pcmd "):
-        #     try:
-        #         parts = cmd.split()
-        #         numbers = parts[1:] # the first part is the command 
-        #         if len(numbers) < 3:
-        #             self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, 3 are required; {cmd} ") 
-        #         else:
-        #             if len(numbers) > 3:
-        #                 self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, ignoring the exces over 3 ") 
-        #             try:
-        #                 floats = [float(x) for x in numbers]
-        #                 self.positionCommand = floats
-        #                 self.followPositionCommand = True    
-        #                 self.get_logger().info(f"Position command set to {floats}, following.")
-        #             except ValueError as v:
-        #                 self.get_logger().warn(f"Something is probably not a number; {v}, {cmd} ")
-        #             except Exception as e:
-        #                 self.get_logger().warn(f"idk: {e}")        
-                    
-        #     except Exception as e:
-        #         self.get_logger().warn(f"Invalid position command: {e}")        
         
-        # elif cmd.startswith("go"):
-        #     self._handle_command("stop") #stop the motion
-        #     self.get_logger().info(f"Now following position command")
-        #     self.followPositionCommand = True
+        elif cmd.startswith("ct "):
+            try:
+                _, val = cmd.split()
+                controller_type = int(val)
+                msg = Int32()
+                msg.data = controller_type
+                self.pub_controller_type.publish(msg)
+                self.get_logger().info(f"Controller type set to {controller_type}")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid controller type command: {e}")
 
+        elif cmd.startswith("jcr "):
+            try:
+                _, val = cmd.split()
+                base_val = float(val)
+                jcr_values = (base_val * jointCenteringRepulsion_scale).astype(np.float32).tolist()
+                msg = Float32MultiArray()
+                msg.data = jcr_values
+                self.pub_jointCenteringRepulsion.publish(msg)
+                self.get_logger().info(f"Joint centering repulsion scaled by {base_val}: {np.round(jcr_values, 3)}")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid joint centering repulsion command: {e}")
 
+        elif cmd.startswith("kpj "):
+            try:
+                _, val = cmd.split()
+                base_val = float(val)
+                kpj_values = (base_val * Kp_joint_scale).astype(np.float32).tolist()
+                msg = Float32MultiArray()
+                msg.data = kpj_values
+                self.pub_Kp_joint.publish(msg)
+                self.get_logger().info(f"Kp_joint scaled by {base_val}: {np.round(kpj_values, 3)}")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid Kp_joint command: {e}")
+
+        elif cmd.startswith("kdj "):
+            try:
+                _, val = cmd.split()
+                base_val = float(val)
+                kdj_values = (base_val * Kd_joint_scale).astype(np.float32).tolist()
+                msg = Float32MultiArray()
+                msg.data = kdj_values
+                self.pub_Kd_joint.publish(msg)
+                self.get_logger().info(f"Kd_joint scaled by {base_val}: {np.round(kdj_values, 3)}")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid Kd_joint command: {e}")
+
+        elif cmd.startswith("kpc "):
+            try:
+                _, val = cmd.split()
+                base_val = float(val)
+                kpc_values = (base_val * Kp_cart_scale).astype(np.float32).tolist()
+                msg = Float32MultiArray()
+                msg.data = kpc_values
+                self.pub_Kp_cart.publish(msg)
+                self.get_logger().info(f"Kp_cart set to {base_val} for all 6 dimensions")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid Kp_cart command: {e}")
+
+        elif cmd.startswith("kdc "):
+            try:
+                _, val = cmd.split()
+                base_val = float(val)
+                kdc_values = (base_val * Kd_cart_scale).astype(np.float32).tolist()
+                msg = Float32MultiArray()
+                msg.data = kdc_values
+                self.pub_Kd_cart.publish(msg)
+                self.get_logger().info(f"Kd_cart set to {base_val} for all 6 dimensions")
+            except Exception as e:
+                self.get_logger().warn(f"Invalid Kd_cart command: {e}")
+        
         else:
             self.get_logger().warn(f"Unknown command: '{cmd}'")
 

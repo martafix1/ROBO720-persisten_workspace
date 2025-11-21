@@ -14,6 +14,10 @@
 #include <controller_interface/controller_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/float32.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <rclcpp/clock.hpp>
 
 #include <Eigen/Eigen>
@@ -106,6 +110,10 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::unique_ptr<KDL::ChainFkSolverPos_recursive> fk_solver_;
   std::unique_ptr<KDL::ChainIkSolverVel_wdls> ik_vel_solver_;
   std::unique_ptr<KDL::ChainIkSolverPos_NR_JL> ik_solver_;
+
+  // FK solvers for each joint (to get taskspace position of each joint)
+  std::array<std::unique_ptr<KDL::ChainFkSolverPos_recursive>, 7> fk_solvers_per_joint_;
+  std::array<KDL::Frame, 7> joint_frames_; // stores FK results for each joint
   
 
   //Joint space state
@@ -153,6 +161,7 @@ class MyController_class : public controller_interface::ControllerInterface {
     }
   };
 
+  pointRep repulsionPoint_pizza;
   std::vector<pointRep> repulsionPoints;
 
   struct planeRep_finite{
@@ -186,7 +195,8 @@ class MyController_class : public controller_interface::ControllerInterface {
 
       }
   };
-    
+  
+  planeRep_finite repulsionPlanes_table;
   std::vector<planeRep_finite> repulsionPlanes;
 
 
@@ -207,7 +217,9 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_q_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_e_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_tau_;
-  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_EE_pos; 
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_EE_pos;
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_xd_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_twist_d_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_misc;
   
 
@@ -219,6 +231,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   std_msgs::msg::Float64MultiArray msg_q_;  
   std_msgs::msg::Float64MultiArray msg_e_;
   std_msgs::msg::Float64MultiArray msg_tau_;
+  std_msgs::msg::Float64MultiArray msg_twist_d_;
   std_msgs::msg::Float64MultiArray msg_miscData_;
   
   #define MISCDATAMAX 69
@@ -227,6 +240,22 @@ class MyController_class : public controller_interface::ControllerInterface {
   // Add your custom controller variables here
   rclcpp::Subscription<trajectory_msgs::msg::JointTrajectoryPoint>::SharedPtr req_traj_point_subscriber_; //subscriber object
   rclcpp::Subscription<trajectory_msgs::msg::MultiDOFJointTrajectory>::SharedPtr taskspace_objective_subscriber; // subscriber for taskspace objective
+  rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr controller_type_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr jointCenteringRepulsion_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kp_joint_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kd_joint_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kp_cart_subscriber_;
+  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kd_cart_subscriber_;
+
+  // Default gain values (modifiable at runtime via topics)
+  std::array<float,7> Kp_joint_defaults = {2.0f,2.0f,2.0f,2.0f,2.0f,2.0f,2.0f};
+  std::array<float,7> Kd_joint_defaults = {1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
+  std::array<float,6> Kp_cart_defaults = {2.0f,2.0f,2.0f,1.0f,1.0f,1.0f};
+  std::array<float,6> Kd_cart_defaults = {1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
+  std::array<float,7> jointCenteringRepulsion_defaults = {1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
+
+  // joint centering repulsion parameter (per-joint, default 1.0 for all)
+  std::array<float,7> jointCenteringRepulsion = {1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
 
   trajectory_msgs::msg::MultiDOFJointTrajectoryPoint taskspace_objective_point;
 

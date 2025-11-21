@@ -104,8 +104,9 @@ namespace MyController_namespace
 
     fk_solver_->JntToCart(q_, x_);
 
-    // required for potential fields:
-    qd_dot_.data.setZero();
+    
+    // // required for potential fields:
+    // qd_dot_.data.setZero();
 
 
     // rate limiter
@@ -121,9 +122,9 @@ namespace MyController_namespace
       } 
     }
 
-    #ifdef DO_REPULSE
+    
       ex5_potentialFields();
-    #endif
+    
 
     e_.data = qd_.data - q_.data;
     e_dot_.data = qd_dot_.data - qdot_.data;
@@ -164,6 +165,7 @@ namespace MyController_namespace
     msg_q_.data.clear();
     msg_e_.data.clear();
     msg_tau_.data.clear();
+    msg_twist_d_.data.clear();
     msg_miscData_.data.clear();
     // Fill the data arrays with the calculated values
     for (int i = 0; i < num_joints; i++)  
@@ -174,6 +176,11 @@ namespace MyController_namespace
       msg_q_.data.push_back(q_(i));
       msg_e_.data.push_back(exertedEffort_(i));
       msg_tau_.data.push_back(tau_d_(i));
+    }
+
+    for (int i = 0; i < 6; i++)
+    {
+      msg_twist_d_.data.push_back(twist_d(i));
     }
 
     for (int i = 0; i < MISCDATAMAX; i++)
@@ -189,7 +196,28 @@ namespace MyController_namespace
     pub_q_->publish(msg_q_);
     pub_e_->publish(msg_e_);
     pub_tau_->publish(msg_tau_);
+    pub_twist_d_->publish(msg_twist_d_);
     pub_misc->publish(msg_miscData_);
+
+    // Publish desired end-effector pose (xd_)
+    {
+      geometry_msgs::msg::PoseStamped msg;
+      msg.header.stamp = node_clock_->now();
+      msg.header.frame_id = root_name;
+
+      msg.pose.position.x = xd_.p.x();
+      msg.pose.position.y = xd_.p.y();
+      msg.pose.position.z = xd_.p.z();
+
+      double x, y, z, w;
+      xd_.M.GetQuaternion(x, y, z, w);
+      msg.pose.orientation.x = x;
+      msg.pose.orientation.y = y;
+      msg.pose.orientation.z = z;
+      msg.pose.orientation.w = w;
+
+      pub_xd_->publish(msg);
+    }
 
     KDL::Frame ee_frame;
     int fk_result = fk_solver_->JntToCart(q_, ee_frame);
@@ -241,6 +269,8 @@ namespace MyController_namespace
       pub_e_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("e", 1000);
       pub_tau_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("tau", 1000);
       pub_EE_pos = get_node()->create_publisher<geometry_msgs::msg::PoseStamped>("EE_pos", 1000);
+      pub_xd_ = get_node()->create_publisher<geometry_msgs::msg::PoseStamped>("xd", 1000);
+      pub_twist_d_ = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("twist_d", 1000);
       pub_misc = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("misc", 1000);
     }
     catch (const std::exception &e)
@@ -301,8 +331,104 @@ namespace MyController_namespace
           #ifdef DEBUG_INPUT
           RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
           #endif
-          
+        });
 
+  // Subscriber for controller type (int). Defaults to member variable value (2) if not received.
+    controller_type_subscriber_ = node->create_subscription<std_msgs::msg::Int32>(
+        "/controller_type",
+        10,
+        [this](const std_msgs::msg::Int32::SharedPtr msg)
+        {
+          if (msg->data != controllerType) {
+            controllerType = msg->data;
+            ex3_Init_smarterControllers(controllerType);
+          }
+          RCLCPP_INFO(get_node()->get_logger(), "controller_type set to %d", controllerType);
+        });
+
+    // Subscriber for jointCenteringRepulsion (Float32MultiArray, per-joint). Defaults to array value if not received.
+    jointCenteringRepulsion_subscriber_ = node->create_subscription<std_msgs::msg::Float32MultiArray>(
+        "/jointCenteringRepulsion",
+        10,
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+        {
+          if (msg->data.size() != 7) {
+            RCLCPP_WARN(get_node()->get_logger(), "jointCenteringRepulsion: Invalid message size %zu, expected 7", msg->data.size());
+            return;
+          }
+          for (int i = 0; i < 7; ++i) {
+            jointCenteringRepulsion_defaults[i] = msg->data[i];
+          }
+          RCLCPP_INFO(get_node()->get_logger(), "jointCenteringRepulsion updated from topic");
+        });
+
+    // Subscribers for gain arrays (Float32MultiArray)
+    Kp_joint_subscriber_ = node->create_subscription<std_msgs::msg::Float32MultiArray>(
+        "/Kp_joint",
+        10,
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+        {
+          if (msg->data.size() != static_cast<size_t>(num_joints)) {
+            RCLCPP_WARN(get_node()->get_logger(), "Kp_joint message size %zu != %d, ignoring", msg->data.size(), num_joints);
+            return;
+          }
+          for (int i = 0; i < num_joints; ++i) {
+            Kp_joint_defaults[i] = msg->data[i];
+            // if (Kp_.data.size() == num_joints) Kp_.data(i) = msg->data[i]; this needs be done in the controller init
+          }
+          ex3_Init_smarterControllers(controllerType);
+          RCLCPP_INFO(get_node()->get_logger(), "Kp_joint updated from topic");
+        });
+
+    Kd_joint_subscriber_ = node->create_subscription<std_msgs::msg::Float32MultiArray>(
+        "/Kd_joint",
+        10,
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+        {
+          if (msg->data.size() != static_cast<size_t>(num_joints)) {
+            RCLCPP_WARN(get_node()->get_logger(), "Kd_joint message size %zu != %d, ignoring", msg->data.size(), num_joints);
+            return;
+          }
+          for (int i = 0; i < num_joints; ++i) {
+            Kd_joint_defaults[i] = msg->data[i];
+            // if (Kd_.data.size() == num_joints) Kd_.data(i) = msg->data[i];
+          }
+          ex3_Init_smarterControllers(controllerType);
+          RCLCPP_INFO(get_node()->get_logger(), "Kd_joint updated from topic");
+        });
+
+    Kp_cart_subscriber_ = node->create_subscription<std_msgs::msg::Float32MultiArray>(
+        "/Kp_cart",
+        10,
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+        {
+          if (msg->data.size() != 6) {
+            RCLCPP_WARN(get_node()->get_logger(), "Kp_cart message size %zu != 6, ignoring", msg->data.size());
+            return;
+          }
+          for (int i = 0; i < 6; ++i) {
+            Kp_cart_defaults[i] = msg->data[i];
+            // if (Kp_cartesian_.size() == 6) Kp_cartesian_(i) = msg->data[i];
+          }
+          ex3_Init_smarterControllers(controllerType);
+          RCLCPP_INFO(get_node()->get_logger(), "Kp_cart updated from topic");
+        });
+
+    Kd_cart_subscriber_ = node->create_subscription<std_msgs::msg::Float32MultiArray>(
+        "/Kd_cart",
+        10,
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+        {
+          if (msg->data.size() != 6) {
+            RCLCPP_WARN(get_node()->get_logger(), "Kd_cart message size %zu != 6, ignoring", msg->data.size());
+            return;
+          }
+          for (int i = 0; i < 6; ++i) {
+            Kd_cart_defaults[i] = msg->data[i];
+            // if (Kd_cartesian_.size() == 6) Kd_cartesian_(i) = msg->data[i];
+          }
+          ex3_Init_smarterControllers(controllerType);
+          RCLCPP_INFO(get_node()->get_logger(), "Kd_cart updated from topic");
         });
 
     auto parameters_client =
@@ -452,6 +578,18 @@ namespace MyController_namespace
     ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_wdls>(kdl_chain_);
     ik_vel_solver_->setLambda(0.01);
 
+    // Create FK solvers for each joint (chains from root to each joint)
+    for (int i = 0; i < num_joints; ++i) {
+      KDL::Chain chain_to_joint;
+      if (kdl_tree_.getChain(root_name, joint_names_[i], chain_to_joint)) {
+        fk_solvers_per_joint_[i] = std::make_unique<KDL::ChainFkSolverPos_recursive>(chain_to_joint);
+        RCLCPP_INFO(get_node()->get_logger(), "Created FK solver for joint %d (%s)", i, joint_names_[i].c_str());
+      } else {
+        RCLCPP_WARN(get_node()->get_logger(), "Failed to create chain from %s to joint %d (%s)", 
+                     root_name.c_str(), i, joint_names_[i].c_str());
+      }
+    }
+
     ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
         kdl_chain_,
         joint_min_limits_,
@@ -517,9 +655,25 @@ namespace MyController_namespace
     Ki_.resize(num_joints);
     Kd_.resize(num_joints);
 
-    Kp_.data.setConstant(2);
-    Ki_.data.setConstant(0);
-    Kd_.data.setConstant(1);
+    // Initialize joint gains from defaults (set in header) so they can be overridden via topics
+    for (int i = 0; i < num_joints; ++i) {
+      Kp_.data(i) = Kp_joint_defaults[i];
+      Ki_.data(i) = 0.0;
+      Kd_.data(i) = Kd_joint_defaults[i];
+    }
+
+    // Initialize cartesian gains from defaults
+    Kp_cartesian_.resize(6);
+    Kd_cartesian_.resize(6);
+    for (int i = 0; i < 6; ++i) {
+      Kp_cartesian_(i) = Kp_cart_defaults[i];
+      Kd_cartesian_(i) = Kd_cart_defaults[i];
+    }
+
+    // Initialize joint centering repulsion from defaults
+    for (int i = 0; i < num_joints; ++i) {
+      jointCenteringRepulsion[i] = jointCenteringRepulsion_defaults[i];
+    }
 
     twist_d.resize(6);
 
@@ -536,6 +690,8 @@ namespace MyController_namespace
     pub_e_->on_activate();
     pub_tau_->on_activate();
     pub_EE_pos->on_activate();
+    pub_xd_->on_activate();
+    pub_twist_d_->on_activate();
     pub_misc->on_activate();
 
 
@@ -549,7 +705,7 @@ namespace MyController_namespace
       RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
     }
 
-    #ifdef DO_REPULSE
+
     taskSpaceRepulse_initHardcodedStuff();
     // cannot be in the static function or in the constructor (no logger yet).
     #ifdef DEBUG_EX5_POINTS
@@ -558,7 +714,7 @@ namespace MyController_namespace
       RCLCPP_INFO(get_node()->get_logger(), "added point (%4.2f %4.2f %4.2f), d10 = %4.2f",point.x.x(),point.x.y(),point.x.z(),point.dist10);
     }   
     #endif
-    #endif
+
 
     ex3_Init_smarterControllers(controllerType);
 
@@ -770,8 +926,7 @@ namespace MyController_namespace
   }
 
   void MyController_class::ex3_Init_smarterControllers(int controllerType){
-    double w = 2; //rad/s
-    double damp = 1; // relative
+
 
     switch (controllerType)
     {
@@ -779,12 +934,15 @@ namespace MyController_namespace
       {
 
       Kp_.data.setConstant(0);
-      Kd_.data.setConstant(1);
       qd_dot_.data.setConstant(0);
-      Kp_cartesian_.resize(6);
-      Kd_cartesian_.resize(6);
-      Kp_cartesian_.setConstant(w*w);
-      Kd_cartesian_.setConstant(w*damp*2);
+      
+      Kd_cartesian_.setConstant(1);
+      for(int i = 0;i<num_joints;i++){
+        Kd_.data(i) = Kp_joint_defaults[i];
+      }
+      for(int i = 0;i<6;i++){
+        Kp_cartesian_(i) = Kp_cart_defaults[i];
+      }
 
         break;
       }
@@ -792,7 +950,8 @@ namespace MyController_namespace
     case 3:
       {
         //setup necesities for torque controller
-      
+      double w = 10; //rad/s
+      double damp = 1.5; // relative
       // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
       // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
       Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
@@ -801,6 +960,19 @@ namespace MyController_namespace
       // Ki_.data.setConstant(0);
       // Kd_.data.setConstant(w*damp*2);
       qd_dot_.data.setConstant(0);
+
+      // Kp_.data.setConstant(0);
+      // qd_dot_.data.setConstant(0);
+      
+      RCLCPP_WARN(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m Dynamic regulator gains not implemented yet for controller \033[0m type %d",controllerType);
+      // Kd_cartesian_.setConstant(1);
+      // for(int i = 0;i<num_joints;i++){
+      //   Kd_.data(i) = Kp_joint_defaults[i];
+      // }
+      // for(int i = 0;i<6,i++){
+      //   Kp_cartesian_.data(i) = Kp_cart_defaults[i];
+      // }
+
 
 
         break;
@@ -841,10 +1013,29 @@ namespace MyController_namespace
       RCLCPP_WARN(get_node()->get_logger(), "No transform received yet — skipping frame conversion");
       tsop_kdlFrame = KDL::Frame(
           KDL::Rotation::Quaternion(0.0, 0.0, 0.0, 1.0), // Identity orientation
-          KDL::Vector(1.0, 1.0, 1.0)                     // Position (x=1, y=2, z=3)
+          KDL::Vector(0.0, 0.0, 2.0)                     // Position (x=1, y=2, z=3)
       );
       // return;
     }
+    xd_ = tsop_kdlFrame;
+    if(!taskspace_objective_point.velocities.empty())
+    {
+      
+      twist_d(0) = taskspace_objective_point.velocities[0].linear.x ;
+      twist_d(1) = taskspace_objective_point.velocities[0].linear.y ;
+      twist_d(2) = taskspace_objective_point.velocities[0].linear.z ;
+
+      twist_d(3) = taskspace_objective_point.velocities[0].angular.x ;
+      twist_d(4) = taskspace_objective_point.velocities[0].angular.y ;
+      twist_d(5) = taskspace_objective_point.velocities[0].angular.z ;
+
+    }
+    else{
+      twist_d.setConstant(0);
+    }
+
+
+
 
     switch (controllerType)
     {
@@ -853,8 +1044,6 @@ namespace MyController_namespace
     {
 
       // 1. Forward kinematics
-      KDL::Frame Te;
-      
 
       // 2. Desired and actual pose difference (full 6D)
       KDL::Frame Td = tsop_kdlFrame;
@@ -876,21 +1065,10 @@ namespace MyController_namespace
       Eigen::MatrixXd J_pinv = J_eig.completeOrthogonalDecomposition().pseudoInverse();
       //Eigen::MatrixXd J_pinv = J_eig.inverse();
 
-      Eigen::VectorXd qdot_cmd = J_pinv * ( twist_cmd.cwiseProduct(Kd_cartesian_)) ;
+      // Eigen::VectorXd qdot_cmd = J_pinv * ( twist_cmd.cwiseProduct(Kd_cartesian_)) ;
+      Eigen::VectorXd qdot_cmd = J_pinv * twist_cmd;
 
       //RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.2: e_x.norm(): %f, jac ret: %d, qdot_d(0-2) : %3.2f, %3.2f, %3.2f", e_x.norm(), ret, qdot_cmd(0),qdot_cmd(1),qdot_cmd(2));
-
-
-      // Eigen::VectorXd qdot(qdot_.data);
-      // Eigen::VectorXd qddot_cmd = Kd_cartesian_.cwiseProduct(qdot_cmd - qdot);
-
-      // // Compute dynamics and torque
-      // dyn_solver_->JntToMass(q_, M_);
-      // dyn_solver_->JntToCoriolis(q_, qdot_, C_);
-      // dyn_solver_->JntToGravity(q_, G_);
-
-      // Eigen::MatrixXd M_eig = M_.data;
-      // Eigen::VectorXd tau = M_eig * qddot_cmd + C_.data + G_.data;
 
       for (int i = 0; i < num_joints; ++i)
         qd_dot_(i) = qdot_cmd(i);
@@ -951,11 +1129,11 @@ namespace MyController_namespace
   {
     
     //KDL::JntArray q_z(num_joints);
-    double safetyLimit_deg =  10.0;//10;
-    double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
+    // double safetyLimit_deg =  10.0;//10;
+    // double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
 
 
-    double viscoseConstant = 10;
+    // double viscoseConstant = 10;
 
     for(int i = 0; i < num_joints; i++)
     {
@@ -964,41 +1142,72 @@ namespace MyController_namespace
 
       // double dist_max = std::abs(position_lim_MAX[i] -q_z(i));
       // double dist_min = std::abs(position_lim_MIN[i] -q_z(i));
-      double distLim, viscosity, repulse,direction;
-      if (qdot_(i) > 0) {
-            direction = 1.0;
-            distLim = q_(i) - (position_lim_MAX[i] - safetyLimit_rad);
-      } 
-      else if (qdot_(i) < 0) {
-            direction = -1.0;
-            distLim = -q_(i) + (position_lim_MIN[i] + safetyLimit_rad);
-      } 
-      else {
-            direction = 0.0;
-            distLim = 0.0;
+      // double distLim, viscosity, repulse,direction;
+      // if (qdot_(i) > 0) {
+      //       direction = 1.0;
+      //       distLim = q_(i) - (position_lim_MAX[i] - safetyLimit_rad);
+      // } 
+      // else if (qdot_(i) < 0) {
+      //       direction = -1.0;
+      //       distLim = -q_(i) + (position_lim_MIN[i] + safetyLimit_rad);
+      // } 
+      // else {
+      //       direction = 0.0;
+      //       distLim = 0.0;
+      // }
+
+      // // distLim being positive means the field is active
+      // if (distLim > 0) {
+      //     viscosity = (distLim * viscoseConstant);
+      // } 
+      // else {
+      //     viscosity = 0.0;
+      // }
+
+      // if (qdot_(i) * direction > 0) {  // heading into the limit
+      //     repulse = (-1)*((qdot_(i) * qdot_(i))*direction + qdot_(i))   * viscosity;
+      // }
+
+      // qd_dot_(i) += repulse;
+
+      // if(i == 0){
+      //   miscData[12] = distLim;
+      //   miscData[13] = direction;
+      //   miscData[14] = viscosity;
+      //   miscData[15] = repulse;
+
+      // }
+
+
+      #define JOINTCENTERING
+      #ifdef JOINTCENTERING
+      
+      double max_command = (double)jointCenteringRepulsion[i];
+      double ramp_dist = 15.0/(3.14/180.0);
+
+      double currentDist = q_(i)-position_centers[i];
+      double centering_repulse = 0; 
+
+      if (currentDist < ramp_dist)
+      {
+          centering_repulse = -max_command*(currentDist/ramp_dist);
       }
-
-      // distLim being positive means the field is active
-      if (distLim > 0) {
-          viscosity = (distLim * viscoseConstant);
-      } 
-      else {
-          viscosity = 0.0;
+      else
+      {
+        if(currentDist>0)
+        {
+          centering_repulse = -max_command;
+        }
+        else
+        {
+          centering_repulse = max_command;
+        }
+        
       }
+      
+      qd_dot_(i) += centering_repulse;
 
-      if (qdot_(i) * direction > 0) {  // heading into the limit
-          repulse = (-1)*((qdot_(i) * qdot_(i))*direction + qdot_(i))   * viscosity;
-      }
-
-      qd_dot_(i) = repulse;
-
-      if(i == 0){
-        miscData[12] = distLim;
-        miscData[13] = direction;
-        miscData[14] = viscosity;
-        miscData[15] = repulse;
-
-      }
+      #endif
 
     }
     // miscData[12] = q_z(0);
@@ -1007,79 +1216,38 @@ namespace MyController_namespace
 
   }
 
-  void MyController_class::taskSpaceRepulse(){
-    KDL::Frame ee_frame;
-    int fk_result = fk_solver_->JntToCart(q_, ee_frame);
-    if (fk_result != 0)
-    {
-      RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: FK failed for some reason");
-      return;
-    }
-
-    Eigen::Vector3d EE(ee_frame.p.x(),ee_frame.p.y(),ee_frame.p.z());
-
-    miscData[18] = ee_frame.p.x();
-    miscData[19] = ee_frame.p.y();
-    miscData[20] = ee_frame.p.z();
-
-
-
-
-    Eigen::Vector3d totalRepulse(0,0,0);
-
-    for (size_t i = 0; i < repulsionPoints.size(); ++i) {
-      const auto& rp = repulsionPoints[i];
-
+  // returns repulsion "force" from repulsion point on the robot point
+  Eigen::Vector3d  MyController_class::taskpsaceGetPointRepulse( Eigen::Vector3d RobotPoint, pointRep rp ){
       //dist
-      double dist = (EE-rp.x).norm();
+      double dist = (RobotPoint-rp.x).norm();
 
       Eigen::Vector3d repulseVector(0,0,0);
-
       if(dist > rp.dist0)
-      {
-        // turn off for debuggins
-        //continue;
-        
-      }
+      { }
       else{
         double U = 0.5*rp.b *(1.0/dist-1.0/rp.a)*rp.k ; 
         
-        if((EE-rp.x).squaredNorm()<= 0)
+        if((RobotPoint-rp.x).squaredNorm()<= 0)
         {
           RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: distance to point %d is zero, cannot repulse.",i);
-          continue;
+          return repulseVector;
         }
-         repulseVector = (EE-rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
+         repulseVector = (RobotPoint-rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
         
         repulseVector *= U;
-        totalRepulse +=repulseVector;
+        // totalRepulse +=repulseVector;
 
       }
 
-
-      int pointOfInterest = 2;
-      if(i == pointOfInterest){
-        miscData[24] = i;
-        miscData[25] = dist;
-
-        miscData[26] = rp.x.x();
-        miscData[27] = rp.x.y();
-        miscData[28] = rp.x.z();
-
-        miscData[29] = repulseVector.x();
-        miscData[30] = repulseVector.y();
-        miscData[31] = repulseVector.z();
-
-        miscData[32] = repulseVector.norm();
-      }
+      return repulseVector;
+  }
 
 
-    }
-
-    for (size_t i = 0; i < repulsionPlanes.size(); ++i) {
+    Eigen::Vector3d  MyController_class::taskpsaceGetPlaneRepulse( Eigen::Vector3d RobotPoint, planeRep_finite rplane ){
+      
       const auto& rplane = repulsionPlanes[i];
       ////RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: repulsionPlanes.size %d ",repulsionPlanes.size());
-      double dist = (EE - rplane.centerPoint.x).dot(rplane.direction);
+      double dist = (RobotPoint - rplane.centerPoint.x).dot(rplane.direction);
       Eigen::Vector3d repulseVector(0,0,0);
 
       Eigen::Vector3d Qprojected(0,0,0);
@@ -1088,14 +1256,9 @@ namespace MyController_namespace
       Eigen::Vector2d planeCordsProjected(0,0);
 
       if (dist > rplane.centerPoint.dist0)
-      {
-        // turn off for debuggins
-        //continue;
-
-      }else{
-        // check for limits tho.
-        // TODO
-        Qprojected = EE - (dist * rplane.direction);
+      {      }
+      else{
+        Qprojected = RobotPoint - (dist * rplane.direction);
         r = Qprojected - rplane.centerPoint.x;
 
         
@@ -1126,37 +1289,49 @@ namespace MyController_namespace
         }
         else{} // did not lie in the rect
 
-        
+      return repulseVector;
+  }
+
+  void MyController_class::taskSpaceRepulse(){
+  //                                     0,1,2,3,4,5,6
+    int taskSpaceRepuleJoints_point =   {0,0,0,1,0,0,0};
+    int taskSpaceRepuleJoints_planes =  {0,0,0,1,0,1,0};
+    double taskSpaceRepuleJoints_scaling = {0,0,0,1,0,1,0};
+
+
+    for (int i = 0; i < num_joints; ++i) {
+       
+      // check wheter we are interested in this point
+      if(taskSpaceRepuleJoints_point[i]){
+        int fk_result = fk_solvers_per_joint_[i]->JntToCart(q_, joint_frames_[i]);
+        // make sure to compalint if fk fails
+        if (fk_result != 0) {
+          RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, point repulse: FK failed for joint %d", i); 
+        }
+        Eigen::Vector3d totalRepulse(0,0,0);
+
+        repulsionPoint_pizza
+        taskpsaceGetPointRepulse()
 
       }
 
-      int planeOfInterest = 0;
-      if(i == planeOfInterest){
-        miscData[34] = i;
-        miscData[35] = dist;
-
-        miscData[36] = Qprojected.x();
-        miscData[37] = Qprojected.y();
-        miscData[38] = Qprojected.z();
-
-        miscData[39] = repulseVector.x();
-        miscData[40] = repulseVector.y();
-        miscData[41] = repulseVector.z();
-
-
-        miscData[42] = repulseVector.norm();
-
-        miscData[43] = planeCordsProjected(0);
-        miscData[44] = planeCordsProjected(1);
-        miscData[45] = r.norm();
-
-        miscData[46] = rplane.centerPoint.dist0;
-        miscData[47] = rplane.centerPoint.dist1;
-      }
-
-
-    
+      taskpsaceGetPlaneRepulse()
+      
+     
     }
+    // repulsionPoint_pizza
+    // repulsionPlanes_table
+    
+    KDL::Frame ee_frame;
+    int fk_result = fk_solver_->JntToCart(q_, ee_frame);
+    if (fk_result != 0)
+    {
+      RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: FK failed for some reason");
+      return;
+    }
+
+    Eigen::Vector3d EE(ee_frame.p.x(),ee_frame.p.y(),ee_frame.p.z());
+
 
     KDL::Jacobian J(num_joints);
     jac_solver->JntToJac(q_, J);
@@ -1173,7 +1348,6 @@ namespace MyController_namespace
     miscData[21] = totalRepulse.x();
     miscData[22] = totalRepulse.y();
     miscData[23] = totalRepulse.z();
-
 
   }
 
@@ -1192,13 +1366,17 @@ namespace MyController_namespace
   }
   // in on_activate
   void MyController_class::taskSpaceRepulse_initHardcodedStuff(){
-    repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.8), 0.4, 0.2, 0);
-    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
-    repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 0);
+    repulsionPoint_pizza = pointRep(Eigen::Vector3d(0.45, 0, 1.4), 0.5, 0.3, 1);
 
-    pointRep rp = pointRep(Eigen::Vector3d(0.2, 0, 1.8), 0.1, 0.05, 15);
-    repulsionPlanes.emplace_back(rp,Eigen::Vector3d(-1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
+    //repulsionPoints.emplace_back(Eigen::Vector3d(0.45, 0, 1.4), 0.5, 0.3, 1);
+    // repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.8), 0.4, 0.2, 0);
+    // repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
+    // repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 0);
 
+    // pointRep rp = pointRep(Eigen::Vector3d(0.45, 0, 1.4), 0.2, 0.1, 2);
+    // repulsionPlanes.emplace_back(rp,Eigen::Vector3d(-1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
+
+    repulsionPlanes_table = planeRep_finite(rp,Eigen::Vector3d(-1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
 
 
     //debug repulsionPlanes

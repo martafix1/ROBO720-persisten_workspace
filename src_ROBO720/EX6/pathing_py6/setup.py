@@ -20,6 +20,7 @@ setup(
         'sensor_msgs',
         'trajectory_msgs',
         'geometry_msgs',
+        'scipy',  # <-- Make sure 'scipy' is here
     ],
     zip_safe=True,
     maintainer='root',
