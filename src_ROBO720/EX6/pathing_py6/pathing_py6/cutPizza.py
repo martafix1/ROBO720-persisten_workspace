@@ -3,6 +3,7 @@
 #   ros2 run pathing_py6 cutPizza
 import rclpy
 from rclpy.node import Node
+from trajectory_msgs.msg import JointTrajectoryPoint 
 from trajectory_msgs.msg import MultiDOFJointTrajectory, MultiDOFJointTrajectoryPoint
 from geometry_msgs.msg import Transform, Twist
 from tf_transformations import quaternion_from_euler
@@ -37,6 +38,11 @@ default_Kd_cart = 1.0
 default_jointCenteringRepulsion = 1.0
 
 
+JointSpaceControllers = [0]
+TaskSpaceControllers = [2,3]
+
+
+
 
 class TaskSpaceObjectivePublisher(Node):
     def __init__(self):
@@ -54,6 +60,7 @@ class TaskSpaceObjectivePublisher(Node):
             pizzaCutSequence1_init = [
                 (0.03, 'dbg_describe_pizza'),
                 (5, 'arm'),
+                (69, 'resetJointsAbovePizza'),
                 (2, 'wait'),
             ]
             pizzaCutSequence1 = [
@@ -63,6 +70,7 @@ class TaskSpaceObjectivePublisher(Node):
                 (3.0, 'cutLine'),
                 (1, 'wait'),
                 (1.5, 'retract'),
+                (1, 'resetJointsAbovePizza'),
                 (1, 'wait'),
             ]
 
@@ -96,12 +104,19 @@ class TaskSpaceObjectivePublisher(Node):
             self.xd_dot_linear = np.array([0,0,0])
             self.xd_dot_angular = np.array([0,0,0])
 
+            self.currentControllerType = 3;
+            self.qd_pos = np.array([0,0,0,0,0,0,0])
+            self.qd_vel = np.array([0,0,0,0,0,0,0])
+            self.qd_acc = np.array([0,0,0,0,0,0,0]) 
+
 
             try:
                 super().__init__('taskspace_objective')
                 
                 self.publisher_ = self.create_publisher(MultiDOFJointTrajectory, '/taskspace_objective', 10) # must be Trajectory not just point coz point is not top level message and will crash
                 
+                self.publisher_Jnt = self.create_publisher(JointTrajectoryPoint, '/requested_traj_point', 10)
+
                 # Create publishers for controller parameters
                 self.pub_controller_type = self.create_publisher(Int32, '/controller_type', 10)
                 self.pub_jointCenteringRepulsion = self.create_publisher(Float32MultiArray, '/jointCenteringRepulsion', 10)
@@ -367,9 +382,10 @@ class TaskSpaceObjectivePublisher(Node):
             #self.get_logger().info(f"Final: init done: {self.initDone},  index: {self.currentIndex}, reciepeie time: {fp_time}, real time {now}")
 
 
-
-            
+            reqControllerType = self.currentControllerType
+                
             if func_name == "arm":
+                reqControllerType = 2
                 self.xd_pos = self.x__restPosition
                 self.xd_dir = np.array([0,0,-1])
                 self.xd_roll = 0
@@ -397,13 +413,22 @@ class TaskSpaceObjectivePublisher(Node):
             elif func_name == "wait":
                 pass
             elif func_name == "approach":
+                reqControllerType = 2
                 self.approachPizzaPoint(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             elif func_name == "cutLine":
+                reqControllerType = 2
                 self.cutPizzaLine(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             elif func_name == "retract":
+                reqControllerType = 2
                 self.retractFromPizzaPoint(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
+                pass
+            
+            elif func_name == "resetJointsAbovePizza":
+                reqControllerType = 0
+                qd_pos_deg = np.array([0,-25,0,-140,0,120,0])
+                self.qd_pos = qd_pos_deg*(np.pi/180.0)
                 pass
 
 
@@ -423,71 +448,105 @@ class TaskSpaceObjectivePublisher(Node):
                 self.get_logger().info(f"... xd_pos: {self.xd_pos[0] :.3f} {self.xd_pos[1] :.2f} {self.xd_pos[2] :.2f}")
                 pass
 
-            # solve problems with rotations (x is first for roll 0, then y)
-            
-            z_axis = self.xd_dir #pointing direction is usually z axis
-            roll_angle = self.xd_roll
-            # Choose an arbitrary y-axis (not parallel to z)
-            tmp = np.array([1, 0, 0])
-            if np.allclose(z_axis, tmp):
-                tmp = np.array([0, 1, 0])
 
-            # Construct orthonormal frame
-            x_axis = np.cross(tmp, z_axis)
-            x_axis = x_axis / np.linalg.norm(x_axis) #must be like this to autocast float
-            y_axis = np.cross(z_axis, x_axis)
 
-            # Apply roll around z
-            roll_rot = scipy.spatial.transform.Rotation.from_rotvec(roll_angle * z_axis)
-            rot_matrix = np.column_stack((x_axis, y_axis, z_axis))  # 3x3 rotation
-            rot = scipy.spatial.transform.Rotation.from_matrix(rot_matrix) * roll_rot
-
-            # Convert to quaternion
-            quat = rot.as_quat()  # returns [x, y, z, w]
-
+            ## make sure to request correct controller type
+            if self.currentControllerType != reqControllerType:
+                self.currentControllerType = reqControllerType
+                
+                msg = Int32()
+                msg.data = int(self.currentControllerType)   # ensure Python int is converted cleanly
+                self.pub_controller_type.publish(msg)
+            else:
+                pass
             
 
-            point = MultiDOFJointTrajectoryPoint()
+            if self.currentControllerType in TaskSpaceControllers: # some stuff happens only for taskspace controll
+                
+                # solve problems with rotations (x is first for roll 0, then y)
+                z_axis = self.xd_dir #pointing direction is usually z axis
+                roll_angle = self.xd_roll
+                # Choose an arbitrary y-axis (not parallel to z)
+                tmp = np.array([1, 0, 0])
+                if np.allclose(z_axis, tmp):
+                    tmp = np.array([0, 1, 0])
 
-            # Position + Orientation as Transform
-            transform = Transform()
-            transform.translation.x = float(self.xd_pos[0])
-            transform.translation.y = float(self.xd_pos[1])
-            transform.translation.z = float(self.xd_pos[2])
-            transform.rotation.x = quat[0]
-            transform.rotation.y = quat[1]
-            transform.rotation.z = quat[2]
-            transform.rotation.w = quat[3]  
+                # Construct orthonormal frame
+                x_axis = np.cross(tmp, z_axis)
+                x_axis = x_axis / np.linalg.norm(x_axis) #must be like this to autocast float
+                y_axis = np.cross(z_axis, x_axis)
 
-            # Velocity as Twist
-            velocity = Twist()
-            velocity.linear.x = float(self.xd_dot_linear[0])
-            velocity.linear.y = float(self.xd_dot_linear[1])
-            velocity.linear.z = float(self.xd_dot_linear[2])
-            velocity.angular.x = float(self.xd_dot_angular[0])
-            velocity.angular.y = float(self.xd_dot_angular[1])
-            velocity.angular.z = float(self.xd_dot_angular[2])
+                # Apply roll around z
+                roll_rot = scipy.spatial.transform.Rotation.from_rotvec(roll_angle * z_axis)
+                rot_matrix = np.column_stack((x_axis, y_axis, z_axis))  # 3x3 rotation
+                rot = scipy.spatial.transform.Rotation.from_matrix(rot_matrix) * roll_rot
 
-            # Acceleration as Twist
-            acceleration = Twist()
-            acceleration.linear.x = 0.0
-            acceleration.linear.y = 0.0
-            acceleration.linear.z = 0.0
-            acceleration.angular.x = 0.0
-            acceleration.angular.y = 0.0
-            acceleration.angular.z = 0.0
+                # Convert to quaternion
+                quat = rot.as_quat()  # returns [x, y, z, w]
 
-            point.transforms.append(transform)
-            point.velocities.append(velocity)
-            point.accelerations.append(acceleration)
-            point.time_from_start.sec = 2
-            point.time_from_start.nanosec = 0
 
-            msg = MultiDOFJointTrajectory()
-            msg.joint_names = ['end_effector']  # Required field
+                ## message prep
+                point = MultiDOFJointTrajectoryPoint()
+                # Position + Orientation as Transform
+                transform = Transform()
+                transform.translation.x = float(self.xd_pos[0])
+                transform.translation.y = float(self.xd_pos[1])
+                transform.translation.z = float(self.xd_pos[2])
+                transform.rotation.x = quat[0]
+                transform.rotation.y = quat[1]
+                transform.rotation.z = quat[2]
+                transform.rotation.w = quat[3]  
 
-            msg.points.append(point)
-            self.publisher_.publish(msg)
+                # Velocity as Twist
+                velocity = Twist()
+                velocity.linear.x = float(self.xd_dot_linear[0])
+                velocity.linear.y = float(self.xd_dot_linear[1])
+                velocity.linear.z = float(self.xd_dot_linear[2])
+                velocity.angular.x = float(self.xd_dot_angular[0])
+                velocity.angular.y = float(self.xd_dot_angular[1])
+                velocity.angular.z = float(self.xd_dot_angular[2])
+
+                # Acceleration as Twist
+                acceleration = Twist()
+                acceleration.linear.x = 0.0
+                acceleration.linear.y = 0.0
+                acceleration.linear.z = 0.0
+                acceleration.angular.x = 0.0
+                acceleration.angular.y = 0.0
+                acceleration.angular.z = 0.0
+
+                point.transforms.append(transform)
+                point.velocities.append(velocity)
+                point.accelerations.append(acceleration)
+                point.time_from_start.sec = 2
+                point.time_from_start.nanosec = 0
+
+                msg = MultiDOFJointTrajectory()
+                msg.joint_names = ['end_effector']  # Required field
+
+                msg.points.append(point)
+                self.publisher_.publish(msg)
+
+            elif self.currentControllerType in JointSpaceControllers:
+
+                point = JointTrajectoryPoint()
+
+                self.qd_pos = self.qd_pos.astype(float)
+                self.qd_vel = self.qd_vel.astype(float)
+                self.qd_acc = self.qd_acc.astype(float)
+
+                point.positions = self.qd_pos.tolist()
+                point.velocities = self.qd_vel.tolist()
+                point.accelerations = self.qd_acc.tolist()
+
+                self.publisher_Jnt.publish(point)
+
+            else:
+                self.get_logger().error(f"Unknown controller type : {self.currentControllerType}")
+
+                pass
+
+
         except Exception as e:
             self.get_logger().error(f"Error in timer_callback: {e}")
 

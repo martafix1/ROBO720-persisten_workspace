@@ -245,7 +245,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   std_msgs::msg::Float64MultiArray msg_twist_d_;
   std_msgs::msg::Float64MultiArray msg_miscData_;
   
-  #define MISCDATAMAX 69
+  #define MISCDATAMAX 99
   double miscData[MISCDATAMAX] = {0};
 
   // Add your custom controller variables here

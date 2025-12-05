@@ -1,210 +1,297 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <root>
  <tabbed_widget parent="main_window" name="Main Window">
-  <Tab tab_name="EE stuff" containers="1">
+  <Tab containers="1" tab_name="EE stuff">
    <Container>
     <DockSplitter orientation="-" count="4" sizes="0.250284;0.250284;0.249147;0.250284">
      <DockSplitter orientation="|" count="3" sizes="0.333333;0.333333;0.333333">
       <DockArea name="EE_x">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="0.458750" bottom="0.091250" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.160985" left="7.499915" top="0.663684" right="17.983661"/>
         <limitY/>
-        <curve color="#1f77b4" name="/EE_pos/pose/position/x"/>
-        <curve color="#ff7f0e" name="/xd/pose/position/x"/>
+        <curve name="/EE_pos/pose/position/x" color="#1f77b4"/>
+        <curve name="/xd/pose/position/x" color="#ff7f0e"/>
        </plot>
       </DockArea>
       <DockArea name="EE_y">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="0.102537" bottom="-0.004004" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.476010" left="7.499915" top="0.506897" right="17.983661"/>
         <limitY/>
-        <curve color="#d62728" name="/EE_pos/pose/position/y"/>
-        <curve color="#f14cc1" name="/xd/pose/position/y"/>
+        <curve name="/EE_pos/pose/position/y" color="#d62728"/>
+        <curve name="/xd/pose/position/y" color="#f14cc1"/>
        </plot>
       </DockArea>
       <DockArea name="EE_z">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="1.600507" bottom="1.579213" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="1.117339" left="7.499915" top="2.119861" right="17.983661"/>
         <limitY/>
-        <curve color="#1ac938" name="/EE_pos/pose/position/z"/>
-        <curve color="#9467bd" name="/xd/pose/position/z"/>
+        <curve name="/EE_pos/pose/position/z" color="#1ac938"/>
+        <curve name="/xd/pose/position/z" color="#9467bd"/>
        </plot>
       </DockArea>
      </DockSplitter>
      <DockSplitter orientation="|" count="3" sizes="0.333333;0.333333;0.333333">
       <DockArea name="EEd_x">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="0.100000" bottom="-0.100000" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.150333" left="7.499915" top="0.003667" right="17.983661"/>
         <limitY/>
-        <curve color="#17becf" name="/twist_d/data[0]"/>
+        <curve name="/twist_d/data[0]" color="#17becf"/>
        </plot>
       </DockArea>
       <DockArea name="EEd_y">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="0.100000" bottom="-0.100000" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.002593" left="7.499915" top="0.106302" right="17.983661"/>
         <limitY/>
-        <curve color="#bcbd22" name="/twist_d/data[1]"/>
+        <curve name="/twist_d/data[1]" color="#bcbd22"/>
        </plot>
       </DockArea>
       <DockArea name="EEd_z">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="0.100000" bottom="-0.100000" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.100000" left="7.499915" top="0.100000" right="17.983661"/>
         <limitY/>
-        <curve color="#1f77b4" name="/twist_d/data[3]"/>
+        <curve name="/twist_d/data[3]" color="#1f77b4"/>
        </plot>
       </DockArea>
      </DockSplitter>
      <DockSplitter orientation="|" count="3" sizes="0.333333;0.333333;0.333333">
       <DockArea name="EE_roll">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="3.298672" bottom="-3.298666" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-3.295669" left="7.499915" top="3.298599" right="17.983661"/>
         <limitY/>
-        <curve color="#d62728" name="/EE_pos/pose/orientation/roll"/>
-        <curve color="#f14cc1" name="/xd/pose/orientation/roll"/>
+        <curve name="/EE_pos/pose/orientation/roll" color="#d62728"/>
+        <curve name="/xd/pose/orientation/roll" color="#f14cc1"/>
        </plot>
       </DockArea>
       <DockArea name="EE_pitch">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="0.002159" bottom="-0.088534" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-1.372498" left="7.499915" top="1.299408" right="17.983661"/>
         <limitY/>
-        <curve color="#1ac938" name="/EE_pos/pose/orientation/pitch"/>
-        <curve color="#9467bd" name="/xd/pose/orientation/pitch"/>
+        <curve name="/EE_pos/pose/orientation/pitch" color="#1ac938"/>
+        <curve name="/xd/pose/orientation/pitch" color="#9467bd"/>
        </plot>
       </DockArea>
       <DockArea name="EE_yaw">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755085" top="1.714093" bottom="1.567301" left="17.755490"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-1.758093" left="7.499915" top="2.748225" right="17.983661"/>
         <limitY/>
-        <curve color="#ff7f0e" name="/EE_pos/pose/orientation/yaw"/>
-        <curve color="#17becf" name="/xd/pose/orientation/yaw"/>
+        <curve name="/EE_pos/pose/orientation/yaw" color="#ff7f0e"/>
+        <curve name="/xd/pose/orientation/yaw" color="#17becf"/>
        </plot>
       </DockArea>
      </DockSplitter>
      <DockArea name="...">
-      <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-       <range right="1.000000" top="1.000000" bottom="0.000000" left="0.000000"/>
+      <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+       <range bottom="0.000000" left="0.000000" top="1.000000" right="1.000000"/>
        <limitY/>
       </plot>
      </DockArea>
     </DockSplitter>
    </Container>
   </Tab>
-  <Tab tab_name="q and qd_dots" containers="1">
+  <Tab containers="1" tab_name="q and qd_dots">
    <Container>
     <DockSplitter orientation="-" count="4" sizes="0.250284;0.250284;0.249147;0.250284">
      <DockSplitter orientation="|" count="4" sizes="0.25;0.25;0.25;0.25">
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="3.000000" bottom="-3.000000" left="17.755400"/>
-        <limitY max="3" min="-3"/>
-        <curve color="#bcbd22" name="/q/data[0]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-3.000000" left="8.099114" top="3.000000" right="18.016075"/>
+        <limitY min="-3" max="3"/>
+        <curve name="/q/data[0]" color="#bcbd22"/>
+        <curve name="/qd/data[0]" color="#bcbd22"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.000000" bottom="-2.000000" left="17.755400"/>
-        <limitY max="2" min="-2"/>
-        <curve color="#1f77b4" name="/q/data[1]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.000000" left="8.099114" top="2.000000" right="18.016075"/>
+        <limitY min="-2" max="2"/>
+        <curve name="/q/data[1]" color="#1f77b4"/>
+        <curve name="/qd/data[1]" color="#1f77b4"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="3.000000" bottom="-3.000000" left="17.755400"/>
-        <limitY max="3" min="-3"/>
-        <curve color="#d62728" name="/q/data[2]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-3.000000" left="8.099114" top="3.000000" right="18.016075"/>
+        <limitY min="-3" max="3"/>
+        <curve name="/q/data[2]" color="#d62728"/>
+        <curve name="/qd/data[2]" color="#d62728"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="0.000000" bottom="-3.200000" left="17.755400"/>
-        <limitY max="0" min="-3.2"/>
-        <curve color="#9467bd" name="/q/data[3]"/>
-       </plot>
-      </DockArea>
-     </DockSplitter>
-     <DockSplitter orientation="|" count="4" sizes="0.25;0.25;0.25;0.25">
-      <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#1f77b4" name="/qd_dot/data[0]"/>
-       </plot>
-      </DockArea>
-      <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#d62728" name="/qd_dot/data[1]"/>
-       </plot>
-      </DockArea>
-      <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#1ac938" name="/qd_dot/data[2]"/>
-       </plot>
-      </DockArea>
-      <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#ff7f0e" name="/qd_dot/data[3]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-3.200000" left="8.099114" top="0.000000" right="18.016075"/>
+        <limitY min="-3.2" max="0"/>
+        <curve name="/q/data[3]" color="#9467bd"/>
+        <curve name="/qd/data[3]" color="#9467bd"/>
        </plot>
       </DockArea>
      </DockSplitter>
      <DockSplitter orientation="|" count="4" sizes="0.25;0.25;0.25;0.25">
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="3.000000" bottom="-3.000000" left="17.755400"/>
-        <limitY max="3" min="-3"/>
-        <curve color="#1ac938" name="/q/data[4]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[0]" color="#1f77b4"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="4.000000" bottom="0.000000" left="17.755400"/>
-        <limitY max="4" min="0"/>
-        <curve color="#ff7f0e" name="/q/data[5]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[1]" color="#d62728"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="3.000000" bottom="-3.000000" left="17.755400"/>
-        <limitY max="3" min="-3"/>
-        <curve color="#f14cc1" name="/q/data[6]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[2]" color="#1ac938"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="1.000000" top="1.000000" bottom="0.000000" left="0.000000"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[3]" color="#ff7f0e"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter orientation="|" count="4" sizes="0.25;0.25;0.25;0.25">
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-3.000000" left="8.099114" top="3.000000" right="18.016075"/>
+        <limitY min="-3" max="3"/>
+        <curve name="/q/data[4]" color="#1ac938"/>
+        <curve name="/qd/data[4]" color="#1ac938"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.000000" left="8.099114" top="4.000000" right="18.016075"/>
+        <limitY min="0" max="4"/>
+        <curve name="/q/data[5]" color="#ff7f0e"/>
+        <curve name="/qd/data[5]" color="#ff7f0e"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-3.000000" left="8.099114" top="3.000000" right="18.016075"/>
+        <limitY min="-3" max="3"/>
+        <curve name="/q/data[6]" color="#f14cc1"/>
+        <curve name="/qd/data[6]" color="#f14cc1"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.000000" left="0.000000" top="1.000000" right="1.000000"/>
         <limitY/>
        </plot>
       </DockArea>
      </DockSplitter>
      <DockSplitter orientation="|" count="4" sizes="0.25;0.25;0.25;0.25">
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#f14cc1" name="/qd_dot/data[4]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[4]" color="#f14cc1"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#9467bd" name="/qd_dot/data[5]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[5]" color="#9467bd"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="22.755036" top="2.500000" bottom="-2.500000" left="17.755400"/>
-        <limitY max="2.5" min="-2.5"/>
-        <curve color="#17becf" name="/qd_dot/data[6]"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.500000" left="8.099114" top="2.500000" right="18.016075"/>
+        <limitY min="-2.5" max="2.5"/>
+        <curve name="/qd_dot/data[6]" color="#17becf"/>
        </plot>
       </DockArea>
       <DockArea name="...">
-       <plot mode="TimeSeries" style="Lines" flip_x="false" flip_y="false">
-        <range right="1.000000" top="1.000000" bottom="0.000000" left="0.000000"/>
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.000000" left="0.000000" top="1.000000" right="1.000000"/>
+        <limitY/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab containers="1" tab_name="jntSpace">
+   <Container>
+    <DockSplitter orientation="-" count="3" sizes="0.332955;0.334091;0.332955">
+     <DockSplitter orientation="|" count="3" sizes="0.333333;0.333333;0.333333">
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.806801" left="8.101196" top="0.900442" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[0]" color="#1f77b4"/>
+        <curve name="/q/data[0]" color="#bcbd22"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.216932" left="8.101196" top="1.800507" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[1]" color="#d62728"/>
+        <curve name="/q/data[1]" color="#1f77b4"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.136225" left="8.101196" top="2.971288" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[2]" color="#1ac938"/>
+        <curve name="/q/data[2]" color="#d62728"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter orientation="|" count="3" sizes="0.333333;0.333333;0.333333">
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-0.090220" left="8.101196" top="0.717360" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[3]" color="#ff7f0e"/>
+        <curve name="/q/data[3]" color="#1ac938"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.902309" left="8.101196" top="3.038754" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[4]" color="#f14cc1"/>
+        <curve name="/q/data[4]" color="#ff7f0e"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.621763" left="8.101196" top="3.829233" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[5]" color="#9467bd"/>
+        <curve name="/q/data[5]" color="#f14cc1"/>
+       </plot>
+      </DockArea>
+     </DockSplitter>
+     <DockSplitter orientation="|" count="3" sizes="0.333333;0.333333;0.333333">
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="-2.976651" left="8.101196" top="2.762068" right="17.987130"/>
+        <limitY/>
+        <curve name="/requested_traj_point/positions[6]" color="#17becf"/>
+        <curve name="/q/data[6]" color="#9467bd"/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.000000" left="0.000000" top="1.000000" right="1.000000"/>
+        <limitY/>
+       </plot>
+      </DockArea>
+      <DockArea name="...">
+       <plot flip_y="false" style="Lines" flip_x="false" mode="TimeSeries">
+        <range bottom="0.000000" left="0.000000" top="1.000000" right="1.000000"/>
         <limitY/>
        </plot>
       </DockArea>
@@ -237,7 +324,7 @@
    <max_array_size value="100"/>
    <boolean_strings_to_number value="true"/>
    <remove_suffix_from_strings value="true"/>
-   <selected_topics value="/EE_pos;/e;/misc;/q;/q_dot;/qd;/qd_dot;/twist_d;/xd"/>
+   <selected_topics value="/EE_pos;/e;/misc;/q;/q_dot;/qd;/qd_dot;/twist_d;/xd;/requested_traj_point"/>
   </plugin>
   <plugin ID="UDP Server"/>
   <plugin ID="WebSocket Server"/>

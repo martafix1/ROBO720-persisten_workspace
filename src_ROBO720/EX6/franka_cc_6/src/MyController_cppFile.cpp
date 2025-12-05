@@ -86,18 +86,18 @@ namespace MyController_namespace
       qdot_(i) = velocity_interface_values_(i);
       exertedEffort_(i) = effort_interface_values_(i);
 
-      if (useJointSpaceInputs)
-      {
-        qd_(i) = req_pos[i];
-        qd_dot_(i) = req_vel[i];
-        qd_ddot_(i) = req_acc[i];
+      // if (useJointSpaceInputs)
+      // {
+      //   qd_(i) = req_pos[i];
+      //   qd_dot_(i) = req_vel[i];
+      //   qd_ddot_(i) = req_acc[i];
 
-        double w = 2;    // rad/s
-        double damp = 1; // relative
+      //   double w = 2;    // rad/s
+      //   double damp = 1; // relative
 
-        Kp_.data = (w * w) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
-        Kd_.data = (w * damp * 2) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
-      }
+      //   Kp_.data = (w * w) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
+      //   Kd_.data = (w * damp * 2) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
+      // }
     }
 
     fk_solver_->JntToCart(q_, x_);
@@ -117,7 +117,7 @@ namespace MyController_namespace
       {
         ex3_smarterControllers(controllerType); // 100Hz
       }
-      ex5_potentialFields();
+      //ex5_potentialFields();
     }
 
     e_.data = qd_.data - q_.data;
@@ -132,9 +132,21 @@ namespace MyController_namespace
     // switch from kdl JntArray to eigen for matrix operations
     // Eigen::VectorXd qdot_eigen = qdot_.data;
 
-    aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+    // aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+    aux_d_.data = (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
     comp_d_.data = C_.data + G_.data;
     tau_d_.data = aux_d_.data + comp_d_.data;
+
+
+     for (int i = 0; i < num_joints; i++)
+    {
+      miscData[i+40] = Kp_.data.cwiseProduct(e_.data)(i);
+      miscData[i+50] = Kd_.data.cwiseProduct(e_dot_.data)(i);
+      miscData[i+60] = qd_ddot_.data(i);
+      miscData[i+70] = aux_d_(i);
+      miscData[i+80] = comp_d_(i);
+      miscData[i+90] = tau_d_(i);
+    }
 
     // tau_d_.data = (G_.data) - qdot_.data * 0.5;
     // Eigen::VectorXd tau = G_.data - qdot_.data;
@@ -752,14 +764,14 @@ namespace MyController_namespace
     pub_misc->on_activate();
 
     RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
-    if (useJointSpaceInputs)
-    {
-      RCLCPP_WARN(get_node()->get_logger(), " \033[44m controller expects \033[0m jointspace inputs");
-    }
-    if (!useJointSpaceInputs)
-    {
-      RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
-    }
+    // if (useJointSpaceInputs)
+    // {
+    //   RCLCPP_WARN(get_node()->get_logger(), " \033[44m controller expects \033[0m jointspace inputs");
+    // }
+    // if (!useJointSpaceInputs)
+    // {
+    //   RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
+    // }
 
     taskSpaceRepulse_initHardcodedStuff();
 // cannot be in the static function or in the constructor (no logger yet).
@@ -984,9 +996,21 @@ namespace MyController_namespace
 
   void MyController_class::ex3_Init_smarterControllers(int controllerType)
   {
-
     switch (controllerType)
     {
+
+    case 0:
+    {
+      double w = 10;     // rad/s
+      double damp = 1.5; // relative
+      Kp_.data = (w * w) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
+      Kd_.data = (w * damp * 2) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
+      RCLCPP_WARN(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m Dynamic regulator gains not implemented yet for controller \033[0m type %d", controllerType);
+      RCLCPP_INFO(get_node()->get_logger(), " \033[44m controller expects \033[0m jointspace inputs");
+      break;
+    }
+
+
     case 2:
     {
 
@@ -1002,7 +1026,7 @@ namespace MyController_namespace
       {
         Kp_cartesian_(i) = Kp_cart_defaults[i];
       }
-
+      RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
       break;
     }
 
@@ -1024,6 +1048,7 @@ namespace MyController_namespace
       // qd_dot_.data.setConstant(0);
 
       RCLCPP_WARN(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m Dynamic regulator gains not implemented yet for controller \033[0m type %d", controllerType);
+      RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
       // Kd_cartesian_.setConstant(1);
       // for(int i = 0;i<num_joints;i++){
       //   Kd_.data(i) = Kp_joint_defaults[i];
@@ -1043,6 +1068,9 @@ namespace MyController_namespace
 
   void MyController_class::ex3_smarterControllers(int controllerType)
   {
+    bool taskSpace_recieved = false;
+    bool jointSpace_recieved = false;
+
 
     KDL::Frame tsop_kdlFrame;
     if (!taskspace_objective_point.transforms.empty())
@@ -1060,10 +1088,11 @@ namespace MyController_namespace
       miscData[1] = position.data[0];
       miscData[2] = position.data[1];
       miscData[3] = position.data[2];
+      taskSpace_recieved = true;
     }
     else
     {
-      RCLCPP_WARN(get_node()->get_logger(), "No transform received yet — skipping frame conversion");
+      //RCLCPP_WARN(get_node()->get_logger(), "No transform received yet — skipping frame conversion");
       tsop_kdlFrame = KDL::Frame(
           KDL::Rotation::Quaternion(0.0, 0.0, 0.0, 1.0), // Identity orientation
           KDL::Vector(0.0, 0.0, 2.0)                     // Position (x=1, y=2, z=3)
@@ -1089,10 +1118,22 @@ namespace MyController_namespace
 
     switch (controllerType)
     {
+    case 0: //joint-space controller
+    { 
+      //RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers: running type %d",0);
+      for(int i = 0; i < num_joints;i++){
+        qd_(i) = req_pos[i];
+        qd_dot_(i) = req_vel[i];
+        qd_ddot_(i) = req_acc[i];
+      }
+
+      break;
+    }
+
 
     case 2: // Task-space resolved-rate PD control
     {
-
+     // RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers: running type %d",2);
       // 1. Forward kinematics
 
       // 2. Desired and actual pose difference (full 6D)
@@ -1123,9 +1164,11 @@ namespace MyController_namespace
 
       break;
     }
+    
 
     case 3: // jointSpaceController
     {
+      //RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers: running type %d",3);
       KDL::Frame target = tsop_kdlFrame;
 
       double TaskSpaceError = compareFrames(lastTarget, target);
