@@ -132,8 +132,8 @@ namespace MyController_namespace
     // switch from kdl JntArray to eigen for matrix operations
     // Eigen::VectorXd qdot_eigen = qdot_.data;
 
-    // aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
-    aux_d_.data = (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+    aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
+    // aux_d_.data = (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
     comp_d_.data = C_.data + G_.data;
     tau_d_.data = aux_d_.data + comp_d_.data;
 

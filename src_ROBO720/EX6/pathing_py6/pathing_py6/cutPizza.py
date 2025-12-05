@@ -60,7 +60,7 @@ class TaskSpaceObjectivePublisher(Node):
             pizzaCutSequence1_init = [
                 (0.03, 'dbg_describe_pizza'),
                 (5, 'arm'),
-                (69, 'resetJointsAbovePizza'),
+                (1, 'resetJointsAbovePizza'),
                 (2, 'wait'),
             ]
             pizzaCutSequence1 = [
@@ -104,7 +104,7 @@ class TaskSpaceObjectivePublisher(Node):
             self.xd_dot_linear = np.array([0,0,0])
             self.xd_dot_angular = np.array([0,0,0])
 
-            self.currentControllerType = 3;
+            self.currentControllerType = 2;
             self.qd_pos = np.array([0,0,0,0,0,0,0])
             self.qd_vel = np.array([0,0,0,0,0,0,0])
             self.qd_acc = np.array([0,0,0,0,0,0,0]) 
@@ -242,8 +242,8 @@ class TaskSpaceObjectivePublisher(Node):
         
         currentLineAngle_deg = (n_line/n_lines_max)*180 #180 so the lines dont overlap
 
-        point1 = self.getPizzaPoint(currentLineAngle_deg,1.1)
-        point2 = self.getPizzaPoint(currentLineAngle_deg+180,1.1)
+        point1 = self.getPizzaPoint(currentLineAngle_deg)
+        point2 = self.getPizzaPoint(currentLineAngle_deg+180)
 
         vel = (point2-point1)/time_per_movement
 
@@ -401,8 +401,8 @@ class TaskSpaceObjectivePublisher(Node):
                                         )
             elif func_name == "dbg_pizza_line_points":
                 currentLineAngle_deg = (self.currentLine/self.maxLines)*180 #180 so the lines dont overlap
-                point1 = self.getPizzaPoint(currentLineAngle_deg,1.1)
-                point2 = self.getPizzaPoint(currentLineAngle_deg+180,1.1)
+                point1 = self.getPizzaPoint(currentLineAngle_deg)
+                point2 = self.getPizzaPoint(currentLineAngle_deg+180)
 
                 self.get_logger().info(f" \033[45m Current pizza cut line: \033[0m \n"
                                        f" line: {self.currentLine} / {self.maxLines}  \n"
