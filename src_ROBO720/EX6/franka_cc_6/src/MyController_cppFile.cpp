@@ -66,7 +66,6 @@ namespace MyController_namespace
     tip_name = "panda_link7";
     root_name = "base";
 
-
     std::cout << "\033[35m ItDidWork: \033[0m constructor" << std::endl;
   }
 
@@ -87,44 +86,39 @@ namespace MyController_namespace
       qdot_(i) = velocity_interface_values_(i);
       exertedEffort_(i) = effort_interface_values_(i);
 
-      if(useJointSpaceInputs){
+      if (useJointSpaceInputs)
+      {
         qd_(i) = req_pos[i];
         qd_dot_(i) = req_vel[i];
         qd_ddot_(i) = req_acc[i];
 
-        double w = 2; //rad/s
+        double w = 2;    // rad/s
         double damp = 1; // relative
 
-        Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-        Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-
+        Kp_.data = (w * w) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
+        Kd_.data = (w * damp * 2) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
       }
-
     }
 
     fk_solver_->JntToCart(q_, x_);
 
-    
     // // required for potential fields:
     // qd_dot_.data.setZero();
 
-
     // rate limiter
-    if (rateLimiter_10_1 < 10)
+    if (rateLimiter_10_1 < 50)
     {
       rateLimiter_10_1++;
     }
     else
     {
       rateLimiter_10_1 = 0;
-      if(!useJointSpaceInputs){
+      if (!useJointSpaceInputs)
+      {
         ex3_smarterControllers(controllerType); // 100Hz
-      } 
-    }
-
-    
+      }
       ex5_potentialFields();
-    
+    }
 
     e_.data = qd_.data - q_.data;
     e_dot_.data = qd_dot_.data - qdot_.data;
@@ -160,7 +154,7 @@ namespace MyController_namespace
 
     // Clear the data arrays
     msg_qd_dot.data.clear();
-    msg_q_dot.data.clear();  
+    msg_q_dot.data.clear();
     msg_qd_.data.clear();
     msg_q_.data.clear();
     msg_e_.data.clear();
@@ -168,7 +162,7 @@ namespace MyController_namespace
     msg_twist_d_.data.clear();
     msg_miscData_.data.clear();
     // Fill the data arrays with the calculated values
-    for (int i = 0; i < num_joints; i++)  
+    for (int i = 0; i < num_joints; i++)
     {
       msg_qd_dot.data.push_back(qd_dot_(i));
       msg_q_dot.data.push_back(qdot_(i));
@@ -189,8 +183,8 @@ namespace MyController_namespace
     }
 
     // Publish data to topics
-    pub_qd_dot_ ->publish(msg_qd_dot);
-    pub_qdot_ ->publish(msg_q_dot);
+    pub_qd_dot_->publish(msg_qd_dot);
+    pub_qdot_->publish(msg_q_dot);
 
     pub_qd_->publish(msg_qd_);
     pub_q_->publish(msg_q_);
@@ -244,8 +238,6 @@ namespace MyController_namespace
     {
       RCLCPP_WARN(get_node()->get_logger(), "Failed to compute FK");
     }
-
-    
 
     return controller_interface::return_type::OK;
   }
@@ -303,9 +295,9 @@ namespace MyController_namespace
               msg->velocities.size() != num_joints ||
               msg->accelerations.size() != num_joints)
           {
-            
+
             RCLCPP_WARN(get_node()->get_logger(), "Received trajectory point with wrong sizes");
-            
+
             return;
           }
 
@@ -328,18 +320,19 @@ namespace MyController_namespace
           }
 
           taskspace_objective_point = msg->points[0];
-          #ifdef DEBUG_INPUT
+#ifdef DEBUG_INPUT
           RCLCPP_INFO(get_node()->get_logger(), "Received taskspace objective");
-          #endif
+#endif
         });
 
-  // Subscriber for controller type (int). Defaults to member variable value (2) if not received.
+    // Subscriber for controller type (int). Defaults to member variable value (2) if not received.
     controller_type_subscriber_ = node->create_subscription<std_msgs::msg::Int32>(
         "/controller_type",
         10,
         [this](const std_msgs::msg::Int32::SharedPtr msg)
         {
-          if (msg->data != controllerType) {
+          if (msg->data != controllerType)
+          {
             controllerType = msg->data;
             ex3_Init_smarterControllers(controllerType);
           }
@@ -352,11 +345,13 @@ namespace MyController_namespace
         10,
         [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
         {
-          if (msg->data.size() != 7) {
+          if (msg->data.size() != 7)
+          {
             RCLCPP_WARN(get_node()->get_logger(), "jointCenteringRepulsion: Invalid message size %zu, expected 7", msg->data.size());
             return;
           }
-          for (int i = 0; i < 7; ++i) {
+          for (int i = 0; i < 7; ++i)
+          {
             jointCenteringRepulsion_defaults[i] = msg->data[i];
           }
           RCLCPP_INFO(get_node()->get_logger(), "jointCenteringRepulsion updated from topic");
@@ -368,11 +363,13 @@ namespace MyController_namespace
         10,
         [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
         {
-          if (msg->data.size() != static_cast<size_t>(num_joints)) {
+          if (msg->data.size() != static_cast<size_t>(num_joints))
+          {
             RCLCPP_WARN(get_node()->get_logger(), "Kp_joint message size %zu != %d, ignoring", msg->data.size(), num_joints);
             return;
           }
-          for (int i = 0; i < num_joints; ++i) {
+          for (int i = 0; i < num_joints; ++i)
+          {
             Kp_joint_defaults[i] = msg->data[i];
             // if (Kp_.data.size() == num_joints) Kp_.data(i) = msg->data[i]; this needs be done in the controller init
           }
@@ -385,11 +382,13 @@ namespace MyController_namespace
         10,
         [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
         {
-          if (msg->data.size() != static_cast<size_t>(num_joints)) {
+          if (msg->data.size() != static_cast<size_t>(num_joints))
+          {
             RCLCPP_WARN(get_node()->get_logger(), "Kd_joint message size %zu != %d, ignoring", msg->data.size(), num_joints);
             return;
           }
-          for (int i = 0; i < num_joints; ++i) {
+          for (int i = 0; i < num_joints; ++i)
+          {
             Kd_joint_defaults[i] = msg->data[i];
             // if (Kd_.data.size() == num_joints) Kd_.data(i) = msg->data[i];
           }
@@ -402,11 +401,13 @@ namespace MyController_namespace
         10,
         [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
         {
-          if (msg->data.size() != 6) {
+          if (msg->data.size() != 6)
+          {
             RCLCPP_WARN(get_node()->get_logger(), "Kp_cart message size %zu != 6, ignoring", msg->data.size());
             return;
           }
-          for (int i = 0; i < 6; ++i) {
+          for (int i = 0; i < 6; ++i)
+          {
             Kp_cart_defaults[i] = msg->data[i];
             // if (Kp_cartesian_.size() == 6) Kp_cartesian_(i) = msg->data[i];
           }
@@ -419,11 +420,13 @@ namespace MyController_namespace
         10,
         [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg)
         {
-          if (msg->data.size() != 6) {
+          if (msg->data.size() != 6)
+          {
             RCLCPP_WARN(get_node()->get_logger(), "Kd_cart message size %zu != 6, ignoring", msg->data.size());
             return;
           }
-          for (int i = 0; i < 6; ++i) {
+          for (int i = 0; i < 6; ++i)
+          {
             Kd_cart_defaults[i] = msg->data[i];
             // if (Kd_cartesian_.size() == 6) Kd_cartesian_(i) = msg->data[i];
           }
@@ -482,6 +485,7 @@ namespace MyController_namespace
         RCLCPP_ERROR(get_node()->get_logger(), "Could not find joint '%s' in urdf", joint_names_[i].c_str());
         return CallbackReturn::ERROR;
       }
+      RCLCPP_INFO(get_node()->get_logger(), "Pushing back joint '%s' to joints_urdfs_[%d]", joint_names_[i].c_str(),i);
       joint_urdfs_.push_back(joint_urdf);
     }
     // Initialize joint limits
@@ -516,7 +520,6 @@ namespace MyController_namespace
     {
       RCLCPP_INFO(get_node()->get_logger(), "Constructed kdl tree");
     }
-
 
     // Get the KDL chain from the KDL tree
     // if kdl tree has no chain from root to tip, return error
@@ -563,6 +566,12 @@ namespace MyController_namespace
         const KDL::Segment &segment = kdl_chain_.getSegment(i);
         RCLCPP_INFO(get_node()->get_logger(), "    %s", segment.getName().c_str());
       }
+      RCLCPP_INFO(get_node()->get_logger(), "  The kdl_chain_ joints are:");
+      for (unsigned int i = 0; i < kdl_chain_.getNrOfJoints(); i++)
+      {
+        const KDL::Segment &segment = kdl_chain_.getSegment(i);
+        RCLCPP_INFO(get_node()->get_logger(), "    %s", segment.getJoint().getName().c_str());
+      }
     }
 
     // Set the gravity vector
@@ -578,15 +587,60 @@ namespace MyController_namespace
     ik_vel_solver_ = std::make_unique<KDL::ChainIkSolverVel_wdls>(kdl_chain_);
     ik_vel_solver_->setLambda(0.01);
 
-    // Create FK solvers for each joint (chains from root to each joint)
-    for (int i = 0; i < num_joints; ++i) {
+    // Create FK solvers for each joint (chains from root to each joint's child link)
+    for (int i = 0; i < num_joints; ++i)
+    {
       KDL::Chain chain_to_joint;
-      if (kdl_tree_.getChain(root_name, joint_names_[i], chain_to_joint)) {
+      // Prefer the URDF child link name for this joint; fallback to panda_linkN
+      std::string target_link;
+      if (i < static_cast<int>(joint_urdfs_.size()) && joint_urdfs_[i])
+      {
+        target_link = joint_urdfs_[i]->child_link_name;
+      }
+      if (target_link.empty())
+      {
+        target_link = "panda_link" + std::to_string(i + 1);
+      }
+      if (kdl_tree_.getChain(root_name, target_link, chain_to_joint))
+      {
         fk_solvers_per_joint_[i] = std::make_unique<KDL::ChainFkSolverPos_recursive>(chain_to_joint);
-        RCLCPP_INFO(get_node()->get_logger(), "Created FK solver for joint %d (%s)", i, joint_names_[i].c_str());
-      } else {
-        RCLCPP_WARN(get_node()->get_logger(), "Failed to create chain from %s to joint %d (%s)", 
-                     root_name.c_str(), i, joint_names_[i].c_str());
+        RCLCPP_INFO(get_node()->get_logger(), "Created FK solver for joint %d (%s) -> %s", i, joint_names_[i].c_str(), target_link.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "Failed to create chain from %s to %s (joint %d: %s)",
+                    root_name.c_str(), target_link.c_str(), i, joint_names_[i].c_str());
+      }
+      RCLCPP_INFO(get_node()->get_logger(), "Chain to joint %d has %d joints", i, chain_to_joint.getNrOfJoints());
+      for (unsigned int j = 0; j < chain_to_joint.getNrOfJoints(); ++j) {
+          RCLCPP_INFO(get_node()->get_logger(), "  joint %d: %s", j, chain_to_joint.getSegment(j).getJoint().getName().c_str());
+      }
+
+    }
+
+    // Create Jacobian solvers for each joint (chains from root to each joint's child link)
+    for (int i = 0; i < num_joints; ++i)
+    {
+      KDL::Chain chain_to_joint;
+      std::string target_link;
+      if (i < static_cast<int>(joint_urdfs_.size()) && joint_urdfs_[i])
+      {
+        target_link = joint_urdfs_[i]->child_link_name;
+      }
+      if (target_link.empty())
+      {
+        target_link = "panda_link" + std::to_string(i + 1);
+      }
+      if (kdl_tree_.getChain(root_name, target_link, chain_to_joint))
+      {
+        jac_solvers_per_joint_[i] = std::make_unique<KDL::ChainJntToJacSolver>(chain_to_joint);
+        jacobians_per_joint_[i] = KDL::Jacobian(chain_to_joint.getNrOfJoints());
+        RCLCPP_INFO(get_node()->get_logger(), "Created Jacobian solver for joint %d (%s) -> %s", i, joint_names_[i].c_str(), target_link.c_str());
+      }
+      else
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "Failed to create Jacobian solver from %s to %s (joint %d: %s)",
+                    root_name.c_str(), target_link.c_str(), i, joint_names_[i].c_str());
       }
     }
 
@@ -656,7 +710,8 @@ namespace MyController_namespace
     Kd_.resize(num_joints);
 
     // Initialize joint gains from defaults (set in header) so they can be overridden via topics
-    for (int i = 0; i < num_joints; ++i) {
+    for (int i = 0; i < num_joints; ++i)
+    {
       Kp_.data(i) = Kp_joint_defaults[i];
       Ki_.data(i) = 0.0;
       Kd_.data(i) = Kd_joint_defaults[i];
@@ -665,13 +720,15 @@ namespace MyController_namespace
     // Initialize cartesian gains from defaults
     Kp_cartesian_.resize(6);
     Kd_cartesian_.resize(6);
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 6; ++i)
+    {
       Kp_cartesian_(i) = Kp_cart_defaults[i];
       Kd_cartesian_(i) = Kd_cart_defaults[i];
     }
 
     // Initialize joint centering repulsion from defaults
-    for (int i = 0; i < num_joints; ++i) {
+    for (int i = 0; i < num_joints; ++i)
+    {
       jointCenteringRepulsion[i] = jointCenteringRepulsion_defaults[i];
     }
 
@@ -694,27 +751,25 @@ namespace MyController_namespace
     pub_twist_d_->on_activate();
     pub_misc->on_activate();
 
-
     RCLCPP_INFO(get_node()->get_logger(), "MyController_class activated!");
-    if(useJointSpaceInputs)
+    if (useJointSpaceInputs)
     {
       RCLCPP_WARN(get_node()->get_logger(), " \033[44m controller expects \033[0m jointspace inputs");
     }
-    if(!useJointSpaceInputs)
+    if (!useJointSpaceInputs)
     {
       RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
     }
 
-
     taskSpaceRepulse_initHardcodedStuff();
-    // cannot be in the static function or in the constructor (no logger yet).
-    #ifdef DEBUG_EX5_POINTS
-    for (size_t i = 0; i < repulsionPoints.size(); ++i) {
-      const auto& point = repulsionPoints[i];
-      RCLCPP_INFO(get_node()->get_logger(), "added point (%4.2f %4.2f %4.2f), d10 = %4.2f",point.x.x(),point.x.y(),point.x.z(),point.dist10);
-    }   
-    #endif
-
+// cannot be in the static function or in the constructor (no logger yet).
+#ifdef DEBUG_EX5_POINTS
+    for (size_t i = 0; i < repulsionPoints.size(); ++i)
+    {
+      const auto &point = repulsionPoints[i];
+      RCLCPP_INFO(get_node()->get_logger(), "added point (%4.2f %4.2f %4.2f), d10 = %4.2f", point.x.x(), point.x.y(), point.x.z(), point.dist10);
+    }
+#endif
 
     ex3_Init_smarterControllers(controllerType);
 
@@ -770,7 +825,6 @@ namespace MyController_namespace
     }
   }
 
-
   void MyController_class::TaskSpacePathPlanner(KDL::Frame target, KDL::Frame current, KDL::Frame &nextStep, int currentStep, int maxSteps)
   {
 
@@ -779,8 +833,10 @@ namespace MyController_namespace
     {
 
       double completness = (double)currentStep / (double)maxSteps; // ratio of how much of the movement is supposed to be completed
-      if (completness > 1) completness = 1;
-      if (completness < 0) completness = 0;
+      if (completness > 1)
+        completness = 1;
+      if (completness < 0)
+        completness = 0;
 
       double xd = target.p.x();
       double yd = target.p.y();
@@ -797,13 +853,13 @@ namespace MyController_namespace
       double xn = (xd - xc) * completness + xc;
       double yn = (yd - yc) * completness + yc;
       double zn = (zd - zc) * completness + zc;
-      
+
       // angles probs should be interpolated over spherical coords but hey this will work.
       double rn = (rd - rc) * completness + rc;
       double pn = (pd - pc) * completness + pc;
       double an = (ad - ac) * completness + ac;
 
-      RCLCPP_INFO(get_node()->get_logger(), "\033[34m PathPlanning:\033[0m comp: %.3f| xn=%.3f, yn=%.3f, zn=%.3f, rn=%.3f, pn=%.3f, an=%.3f",completness, xn,yn,zn, rn,pn,an );
+      RCLCPP_INFO(get_node()->get_logger(), "\033[34m PathPlanning:\033[0m comp: %.3f| xn=%.3f, yn=%.3f, zn=%.3f, rn=%.3f, pn=%.3f, an=%.3f", completness, xn, yn, zn, rn, pn, an);
 
       nextStep = KDL::Frame((KDL::Rotation::RotZ(an) * KDL::Rotation::RotY(pn) * KDL::Rotation::RotX(rn)), KDL::Vector(xn, yn, zn));
     }
@@ -817,39 +873,39 @@ namespace MyController_namespace
 
     KDL::JntArray initial_guess(num_joints);
     initial_guess = q_;
-    //initial_guess = joint_center_;
+    // initial_guess = joint_center_;
 
-
-    #ifdef DEBUG_IK
+#ifdef DEBUG_IK
     std::string output;
     for (int i = 0; i < num_joints; ++i)
-      {output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";}
+    {
+      output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";
+    }
     RCLCPP_INFO(get_node()->get_logger(), "Initial guess: %s", output.c_str());
     RCLCPP_INFO(get_node()->get_logger(), "Target: x: %f, y: %f, z: %f", target.p.x(), target.p.y(), target.p.z());
     double roll, pitch, yaw;
     target.M.GetRPY(roll, pitch, yaw);
     RCLCPP_INFO(get_node()->get_logger(), "Target: roll: %f, pitch: %f, yaw: %f", roll, pitch, yaw);
-    #endif
-
+#endif
 
     KDL::Frame ee_frame;
     int fk_result = fk_solver_->JntToCart(q_, ee_frame);
 
     if (fk_result >= 0)
     {
+
+#ifdef DEBUG_IK
       // Success — ee_frame now contains EE pose
       double x = ee_frame.p.x();
       double y = ee_frame.p.y();
       double z = ee_frame.p.z();
 
-    #ifdef DEBUG_IK
-     double roll, pitch, yaw;
+      double roll, pitch, yaw;
       ee_frame.M.GetRPY(roll, pitch, yaw);
       RCLCPP_INFO(get_node()->get_logger(), "EE pose: x=%.3f y=%.3f z=%.3f roll=%.3f pitch=%.3f yaw=%.3f",
                   x, y, z, roll, pitch, yaw);
-    #endif
-
-    } 
+#endif
+    }
     else
     {
       RCLCPP_ERROR(get_node()->get_logger(), "FK solver failed with error code %d", fk_result);
@@ -857,58 +913,60 @@ namespace MyController_namespace
     }
 
     // EE dist heuristics
-    double frameDiff = compareFrames(ee_frame,target); 
-    double tolerance = std::min((frameDiff/5)*(frameDiff/5),frameDiff/50);
-    #ifdef DEBUG_IK
-      RCLCPP_INFO(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
-    #endif
+    double frameDiff = compareFrames(ee_frame, target);
+    double tolerance = std::min((frameDiff / 5) * (frameDiff / 5), frameDiff / 50);
+#ifdef DEBUG_IK
+    RCLCPP_INFO(get_node()->get_logger(), "\033[31m IK: \033[0m selected IK tolerance %e", tolerance);
+#endif
     miscData[5] = frameDiff;
     miscData[6] = tolerance;
 
-      ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
+    ik_solver_ = std::make_unique<KDL::ChainIkSolverPos_NR_JL>(
         kdl_chain_,
         joint_min_limits_,
         joint_max_limits_,
         *fk_solver_,
         *ik_vel_solver_,
-        1600, // Max iterations  default: 400
-        tolerance  // Tolerance default: 1e-5 1e-2
-      );
+        1600,     // Max iterations  default: 400
+        tolerance // Tolerance default: 1e-5 1e-2
+    );
     int ret = ik_solver_->CartToJnt(initial_guess, target, result);
-    miscData[8] = 0; 
-    //RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
-    if(ret != 0){
-      
+    miscData[8] = 0;
+    // RCLCPP_INFO(get_node()->get_logger(), "IK: CartToJnt returned %d", ret);
+    if (ret != 0)
+    {
+
       initial_guess = joint_center_;
-      
-      #ifdef DEBUG_IK
-        RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[33m joint position as initial guess failed with code \033[0m %d, trying mid joint position", ret);
-        output = "";
-        for (int i = 0; i < num_joints; ++i)
-          {output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";}
-        RCLCPP_INFO(get_node()->get_logger(), "New initial guess: %s", output.c_str());
-      #endif
-      
+
+#ifdef DEBUG_IK
+      RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[33m joint position as initial guess failed with code \033[0m %d, trying mid joint position", ret);
+      output = "";
+      for (int i = 0; i < num_joints; ++i)
+      {
+        output += "J" + std::to_string(i) + ": " + std::to_string(initial_guess(i)) + ", ";
+      }
+      RCLCPP_INFO(get_node()->get_logger(), "New initial guess: %s", output.c_str());
+#endif
+
       ret = ik_solver_->CartToJnt(initial_guess, target, result);
       miscData[8] = 1;
-      if(ret != 0){
-        #ifdef DEBUG_IK
+      if (ret != 0)
+      {
+#ifdef DEBUG_IK
         RCLCPP_WARN(get_node()->get_logger(), "\033[31m IK: \033[31m ik fallback failed with \033[0m %d returing", ret);
-        #endif
+#endif
         miscData[8] = 2;
       }
-
     }
-
 
     KDL::Frame ik_ee_result;
     fk_result = fk_solver_->JntToCart(result, ik_ee_result);
-    if(fk_result != 0){
+    if (fk_result != 0)
+    {
       ik_ee_result = KDL::Frame::Identity();
     }
-    double ik_ee_target_diff = compareFrames(ik_ee_result,target); 
+    double ik_ee_target_diff = compareFrames(ik_ee_result, target);
     miscData[7] = ik_ee_target_diff;
-
 
     return ret;
   }
@@ -918,44 +976,45 @@ namespace MyController_namespace
     double posDiff = (a.p - b.p).Norm();
     KDL::Rotation R_diff = a.M.Inverse() * b.M;
     KDL::Vector axis;
-    double angle = R_diff.GetRotAngle(axis);  // This returns the angle, and sets the axis
+    double angle = R_diff.GetRotAngle(axis); // This returns the angle, and sets the axis
     double rotDiff = std::abs(angle);
 
     return posDiff + rotDiff;
-
   }
 
-  void MyController_class::ex3_Init_smarterControllers(int controllerType){
-
+  void MyController_class::ex3_Init_smarterControllers(int controllerType)
+  {
 
     switch (controllerType)
     {
     case 2:
-      {
+    {
 
       Kp_.data.setConstant(0);
       qd_dot_.data.setConstant(0);
-      
+
       Kd_cartesian_.setConstant(1);
-      for(int i = 0;i<num_joints;i++){
+      for (int i = 0; i < num_joints; i++)
+      {
         Kd_.data(i) = Kp_joint_defaults[i];
       }
-      for(int i = 0;i<6;i++){
+      for (int i = 0; i < 6; i++)
+      {
         Kp_cartesian_(i) = Kp_cart_defaults[i];
       }
 
-        break;
-      }
-    
+      break;
+    }
+
     case 3:
-      {
-        //setup necesities for torque controller
-      double w = 10; //rad/s
+    {
+      // setup necesities for torque controller
+      double w = 10;     // rad/s
       double damp = 1.5; // relative
       // Kp_.data = (w*w) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
       // Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 1.0,1.2,1.4,1.6,1.8,2.0,2.2).finished();
-      Kp_.data = (w*w) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
-      Kd_.data = (w*damp*2) * (Eigen::VectorXd(7) << 2.2,2.0,1.8,1.6,1.4,1.2,1.0).finished();
+      Kp_.data = (w * w) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
+      Kd_.data = (w * damp * 2) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
       // Kp_.data.setConstant(w*w);
       // Ki_.data.setConstant(0);
       // Kd_.data.setConstant(w*damp*2);
@@ -963,8 +1022,8 @@ namespace MyController_namespace
 
       // Kp_.data.setConstant(0);
       // qd_dot_.data.setConstant(0);
-      
-      RCLCPP_WARN(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m Dynamic regulator gains not implemented yet for controller \033[0m type %d",controllerType);
+
+      RCLCPP_WARN(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m Dynamic regulator gains not implemented yet for controller \033[0m type %d", controllerType);
       // Kd_cartesian_.setConstant(1);
       // for(int i = 0;i<num_joints;i++){
       //   Kd_.data(i) = Kp_joint_defaults[i];
@@ -973,19 +1032,14 @@ namespace MyController_namespace
       //   Kp_cartesian_.data(i) = Kp_cart_defaults[i];
       // }
 
-
-
-        break;
-      }
-    
-    default:
-      RCLCPP_ERROR(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m UNKNOWN controller \033[0m type %d",controllerType);
       break;
     }
 
-
+    default:
+      RCLCPP_ERROR(get_node()->get_logger(), "ex3_Init_smarterControllers: \033[31m UNKNOWN controller \033[0m type %d", controllerType);
+      break;
+    }
   }
-
 
   void MyController_class::ex3_smarterControllers(int controllerType)
   {
@@ -1003,10 +1057,9 @@ namespace MyController_namespace
           taskspace_objective_point.transforms[0].rotation.z,
           taskspace_objective_point.transforms[0].rotation.w);
       tsop_kdlFrame = KDL::Frame(orientation, position);
-        miscData[1] = position.data[0];
-        miscData[2] = position.data[1];
-        miscData[3] = position.data[2];
-
+      miscData[1] = position.data[0];
+      miscData[2] = position.data[1];
+      miscData[3] = position.data[2];
     }
     else
     {
@@ -1018,29 +1071,26 @@ namespace MyController_namespace
       // return;
     }
     xd_ = tsop_kdlFrame;
-    if(!taskspace_objective_point.velocities.empty())
+    if (!taskspace_objective_point.velocities.empty())
     {
-      
-      twist_d(0) = taskspace_objective_point.velocities[0].linear.x ;
-      twist_d(1) = taskspace_objective_point.velocities[0].linear.y ;
-      twist_d(2) = taskspace_objective_point.velocities[0].linear.z ;
 
-      twist_d(3) = taskspace_objective_point.velocities[0].angular.x ;
-      twist_d(4) = taskspace_objective_point.velocities[0].angular.y ;
-      twist_d(5) = taskspace_objective_point.velocities[0].angular.z ;
+      twist_d(0) = taskspace_objective_point.velocities[0].linear.x;
+      twist_d(1) = taskspace_objective_point.velocities[0].linear.y;
+      twist_d(2) = taskspace_objective_point.velocities[0].linear.z;
 
+      twist_d(3) = taskspace_objective_point.velocities[0].angular.x;
+      twist_d(4) = taskspace_objective_point.velocities[0].angular.y;
+      twist_d(5) = taskspace_objective_point.velocities[0].angular.z;
     }
-    else{
+    else
+    {
       twist_d.setConstant(0);
     }
-
-
-
 
     switch (controllerType)
     {
 
-     case 2: // Task-space resolved-rate PD control
+    case 2: // Task-space resolved-rate PD control
     {
 
       // 1. Forward kinematics
@@ -1057,57 +1107,49 @@ namespace MyController_namespace
 
       Eigen::VectorXd twist_cmd = twist_d + e_x.cwiseProduct(Kp_cartesian_);
 
-      
-
       KDL::Jacobian J(num_joints);
       int ret = jac_solver->JntToJac(q_, J);
       Eigen::MatrixXd J_eig = J.data;
       Eigen::MatrixXd J_pinv = J_eig.completeOrthogonalDecomposition().pseudoInverse();
-      //Eigen::MatrixXd J_pinv = J_eig.inverse();
+      // Eigen::MatrixXd J_pinv = J_eig.inverse();
 
       // Eigen::VectorXd qdot_cmd = J_pinv * ( twist_cmd.cwiseProduct(Kd_cartesian_)) ;
       Eigen::VectorXd qdot_cmd = J_pinv * twist_cmd;
 
-      //RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.2: e_x.norm(): %f, jac ret: %d, qdot_d(0-2) : %3.2f, %3.2f, %3.2f", e_x.norm(), ret, qdot_cmd(0),qdot_cmd(1),qdot_cmd(2));
+      // RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.2: e_x.norm(): %f, jac ret: %d, qdot_d(0-2) : %3.2f, %3.2f, %3.2f", e_x.norm(), ret, qdot_cmd(0),qdot_cmd(1),qdot_cmd(2));
 
       for (int i = 0; i < num_joints; ++i)
         qd_dot_(i) = qdot_cmd(i);
 
       break;
     }
-  
 
     case 3: // jointSpaceController
     {
       KDL::Frame target = tsop_kdlFrame;
-      
 
-      
-      double TaskSpaceError =  compareFrames(lastTarget,target);
+      double TaskSpaceError = compareFrames(lastTarget, target);
       miscData[0] = TaskSpaceError;
       lastTarget = target;
-      if(TaskSpaceError > 1e-3) //run IK only when the objective point changes
+      if (TaskSpaceError > 1e-3) // run IK only when the objective point changes
       {
         KDL::JntArray result(num_joints);
         int ret = InverseK(target, result);
         if (ret != 0)
         {
-          //#ifdef DEBUG_EX3
-            RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.3: IK failed, breaking");
-          //#endif
+          // #ifdef DEBUG_EX3
+          RCLCPP_WARN(get_node()->get_logger(), "ex3_smarterControllers.3: IK failed, breaking");
+          // #endif
           break;
         }
         for (int i = 0; i < num_joints; i++)
         {
-          #ifdef DEBUG_EX3
-            RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.3: IK success, joint %d = %f", i + 1, result(i));
-          #endif
+#ifdef DEBUG_EX3
+          RCLCPP_INFO(get_node()->get_logger(), "ex3_smarterControllers.3: IK success, joint %d = %f", i + 1, result(i));
+#endif
           qd_(i) = result(i);
         }
       }
-      
-      
-
     }
     break;
 
@@ -1122,23 +1164,19 @@ namespace MyController_namespace
     }
   }
 
-
   // adds to qd_dot as output
   // if future position is predicted to be between limit position and safety limit, the desiered speed is modified such that the future position should be half of it predicted.
   void MyController_class::jointLimitRepulse()
   {
-    
-    //KDL::JntArray q_z(num_joints);
-    // double safetyLimit_deg =  10.0;//10;
-    // double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
 
+    // KDL::JntArray q_z(num_joints);
+    //  double safetyLimit_deg =  10.0;//10;
+    //  double safetyLimit_rad = safetyLimit_deg*(3.14/180.0);
 
     // double viscoseConstant = 10;
 
-    for(int i = 0; i < num_joints; i++)
+    for (int i = 0; i < num_joints; i++)
     {
-
-    
 
       // double dist_max = std::abs(position_lim_MAX[i] -q_z(i));
       // double dist_min = std::abs(position_lim_MIN[i] -q_z(i));
@@ -1146,11 +1184,11 @@ namespace MyController_namespace
       // if (qdot_(i) > 0) {
       //       direction = 1.0;
       //       distLim = q_(i) - (position_lim_MAX[i] - safetyLimit_rad);
-      // } 
+      // }
       // else if (qdot_(i) < 0) {
       //       direction = -1.0;
       //       distLim = -q_(i) + (position_lim_MIN[i] + safetyLimit_rad);
-      // } 
+      // }
       // else {
       //       direction = 0.0;
       //       distLim = 0.0;
@@ -1159,7 +1197,7 @@ namespace MyController_namespace
       // // distLim being positive means the field is active
       // if (distLim > 0) {
       //     viscosity = (distLim * viscoseConstant);
-      // } 
+      // }
       // else {
       //     viscosity = 0.0;
       // }
@@ -1178,23 +1216,22 @@ namespace MyController_namespace
 
       // }
 
+#define JOINTCENTERING
+#ifdef JOINTCENTERING
 
-      #define JOINTCENTERING
-      #ifdef JOINTCENTERING
-      
       double max_command = (double)jointCenteringRepulsion[i];
-      double ramp_dist = 15.0/(3.14/180.0);
+      double ramp_dist = 15.0 / (3.14 / 180.0);
 
-      double currentDist = q_(i)-position_centers[i];
-      double centering_repulse = 0; 
+      double currentDist = q_(i) - position_centers[i];
+      double centering_repulse = 0;
 
       if (currentDist < ramp_dist)
       {
-          centering_repulse = -max_command*(currentDist/ramp_dist);
+        centering_repulse = -max_command * (currentDist / ramp_dist);
       }
       else
       {
-        if(currentDist>0)
+        if (currentDist > 0)
         {
           centering_repulse = -max_command;
         }
@@ -1202,205 +1239,255 @@ namespace MyController_namespace
         {
           centering_repulse = max_command;
         }
-        
       }
-      
+
       qd_dot_(i) += centering_repulse;
 
-      #endif
-
+#endif
     }
     // miscData[12] = q_z(0);
     // miscData[13] = qd_dot_(0);
-    
-
   }
 
   // returns repulsion "force" from repulsion point on the robot point
-  Eigen::Vector3d  MyController_class::taskpsaceGetPointRepulse( Eigen::Vector3d RobotPoint, pointRep rp ){
-      //dist
-      double dist = (RobotPoint-rp.x).norm();
+  Eigen::Vector3d MyController_class::taskpsaceGetPointRepulse(Eigen::Vector3d RobotPoint, pointRep rp)
+  {
+    // dist
+    double dist = (RobotPoint - rp.x).norm();
 
-      Eigen::Vector3d repulseVector(0,0,0);
-      if(dist > rp.dist0)
-      { }
-      else{
-        double U = 0.5*rp.b *(1.0/dist-1.0/rp.a)*rp.k ; 
-        
-        if((RobotPoint-rp.x).squaredNorm()<= 0)
-        {
-          RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: distance to point %d is zero, cannot repulse.",i);
-          return repulseVector;
-        }
-         repulseVector = (RobotPoint-rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
-        
-        repulseVector *= U;
-        // totalRepulse +=repulseVector;
+    Eigen::Vector3d repulseVector(0, 0, 0);
+    if (dist > rp.dist0)
+    {
+    }
+    else
+    {
+      double U = 0.5 * rp.b * (1.0 / dist - 1.0 / rp.a) * rp.k;
 
+      if ((RobotPoint - rp.x).squaredNorm() <= 0)
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: distance to point is zero, cannot repulse.");
+        return repulseVector;
       }
+      repulseVector = (RobotPoint - rp.x).normalized(); // should point to EE from center of repulse point (= correct repulse direction (hopefuly))
 
-      return repulseVector;
+      repulseVector *= U;
+      // totalRepulse +=repulseVector;
+    }
+
+    return repulseVector;
   }
 
+  Eigen::Vector3d MyController_class::taskpsaceGetPlaneRepulse(Eigen::Vector3d RobotPoint, planeRep_finite rplane)
+  {
+    double dist = (RobotPoint - rplane.centerPoint.x).dot(rplane.direction);
+    Eigen::Vector3d repulseVector(0, 0, 0);
 
-    Eigen::Vector3d  MyController_class::taskpsaceGetPlaneRepulse( Eigen::Vector3d RobotPoint, planeRep_finite rplane ){
-      
-      const auto& rplane = repulsionPlanes[i];
-      ////RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: repulsionPlanes.size %d ",repulsionPlanes.size());
-      double dist = (RobotPoint - rplane.centerPoint.x).dot(rplane.direction);
-      Eigen::Vector3d repulseVector(0,0,0);
+    Eigen::Vector3d Qprojected(0, 0, 0);
+    Eigen::Vector3d r(0, 0, 0);
 
-      Eigen::Vector3d Qprojected(0,0,0);
-      Eigen::Vector3d r(0,0,0);
+    Eigen::Vector2d planeCordsProjected(0, 0);
 
-      Eigen::Vector2d planeCordsProjected(0,0);
+    if (dist > rplane.centerPoint.dist0)
+    {
+    }
+    else
+    {
+      Qprojected = RobotPoint - (dist * rplane.direction);
+      r = Qprojected - rplane.centerPoint.x;
 
-      if (dist > rplane.centerPoint.dist0)
-      {      }
-      else{
-        Qprojected = RobotPoint - (dist * rplane.direction);
-        r = Qprojected - rplane.centerPoint.x;
+      planeCordsProjected(0) = r.dot(rplane.planeX);
+      planeCordsProjected(1) = r.dot(rplane.planeY);
 
-        
-        planeCordsProjected(0) = r.dot(rplane.planeX);
-        planeCordsProjected(1) = r.dot(rplane.planeY);
-        
-        if( std::min(rplane.l1.x(),rplane.l2.x()) < planeCordsProjected(0) && planeCordsProjected(0) < std::max(rplane.l1.x(),rplane.l2.x())   &&
-            std::min(rplane.l1.y(),rplane.l2.y()) < planeCordsProjected(1) && planeCordsProjected(1) < std::max(rplane.l1.y(),rplane.l2.y())   )
+      if (std::min(rplane.l1.x(), rplane.l2.x()) < planeCordsProjected(0) && planeCordsProjected(0) < std::max(rplane.l1.x(), rplane.l2.x()) &&
+          std::min(rplane.l1.y(), rplane.l2.y()) < planeCordsProjected(1) && planeCordsProjected(1) < std::max(rplane.l1.y(), rplane.l2.y()))
+      {
+        // not needed for linear repulsion
+        if (dist < 1e-3)
         {
-          // not needed for linear repulsion
-          if(dist < 1e-3){
-            dist = 1e-3;
+          dist = 1e-3;
+        }
+
+        double U = 0.5 * rplane.centerPoint.b * (1.0 / dist - 1.0 / rplane.centerPoint.a) * rplane.centerPoint.k;
+
+        // linear
+        // double U = (rplane.centerPoint.dist0-dist)/rplane.centerPoint.dist1*rplane.centerPoint.k;
+
+        repulseVector = rplane.direction;
+        repulseVector *= U;
+      }
+      else
+      {
+      } // did not lie in the rect
+    }
+    return repulseVector;
+  }
+
+  void MyController_class::taskSpaceRepulse()
+  {
+    //                                         0, 1, 2, 3, 4, 5, 6
+    int taskSpaceRepuleJoints_point[] =       {0, 0, 0, 1, 0, 0, 0};
+    int taskSpaceRepuleJoints_planes[] =      {0, 0, 0, 1, 0, 1, 0};
+    double taskSpaceRepuleJoints_scaling[] =  {0, 0, 0, 1, 0, 1, 0};
+
+    for (int i = 0; i < num_joints; ++i)
+    {
+      Eigen::Vector3d totalRepulse(0, 0, 0);
+
+      // check wheter we are interested in this point
+      if (taskSpaceRepuleJoints_point[i])
+      {
+        if (!fk_solvers_per_joint_[i])
+        {
+          RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, point repulse: FK solver not available for joint %d", i);
+        }
+        else
+        {
+          // Prepare sub-chain joint array (only joints up to this joint)
+          int chain_dofs = jacobians_per_joint_[i].columns();
+          if (chain_dofs <= 0)
+            chain_dofs = num_joints; // fallback to full
+          KDL::JntArray q_sub(chain_dofs);
+          for (int k = 0; k < chain_dofs; ++k)
+            q_sub(k) = q_(k);
+
+          int fk_result = fk_solvers_per_joint_[i]->JntToCart(q_sub, joint_frames_[i]);
+          if (fk_result != 0)
+          { // make sure to complain if fk fails
+            RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, point repulse: FK failed for joint %d with code %d. The chain_dofs are %d", i, fk_result,chain_dofs);
           }
 
-          double U = 0.5*rplane.centerPoint.b *(1.0/dist-1.0/rplane.centerPoint.a)*rplane.centerPoint.k; 
-          
-          // linear
-          //double U = (rplane.centerPoint.dist0-dist)/rplane.centerPoint.dist1*rplane.centerPoint.k;
+          Eigen::Vector3d pos(
+              joint_frames_[i].p.x(),
+              joint_frames_[i].p.y(),
+              joint_frames_[i].p.z());
 
-          repulseVector = rplane.direction;
-          repulseVector *= U;
-          totalRepulse +=repulseVector;
-
-          
-
-
-
+          totalRepulse += taskpsaceGetPointRepulse(pos, repulsionPoint_pizza);
         }
-        else{} // did not lie in the rect
+      }
+      if (taskSpaceRepuleJoints_planes[i])
+      {
+        if (taskSpaceRepuleJoints_point[i])
+        {
+        } // fk already calculated
+        else
+        { // if fk not calculated, do so.
+          if (!fk_solvers_per_joint_[i])
+          {
+            RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, plane repulse: FK solver not available for joint %d", i);
+          }
+          else
+          {
+            int chain_dofs = jacobians_per_joint_[i].columns();
+            if (chain_dofs <= 0)
+              chain_dofs = num_joints;
+            KDL::JntArray q_sub(chain_dofs);
+            for (int k = 0; k < chain_dofs; ++k)
+              q_sub(k) = q_(k);
 
-      return repulseVector;
-  }
-
-  void MyController_class::taskSpaceRepulse(){
-  //                                     0,1,2,3,4,5,6
-    int taskSpaceRepuleJoints_point =   {0,0,0,1,0,0,0};
-    int taskSpaceRepuleJoints_planes =  {0,0,0,1,0,1,0};
-    double taskSpaceRepuleJoints_scaling = {0,0,0,1,0,1,0};
-
-
-    for (int i = 0; i < num_joints; ++i) {
-       
-      // check wheter we are interested in this point
-      if(taskSpaceRepuleJoints_point[i]){
-        int fk_result = fk_solvers_per_joint_[i]->JntToCart(q_, joint_frames_[i]);
-        // make sure to compalint if fk fails
-        if (fk_result != 0) {
-          RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, point repulse: FK failed for joint %d", i); 
+            int fk_result = fk_solvers_per_joint_[i]->JntToCart(q_sub, joint_frames_[i]);
+            if (fk_result != 0)
+            { // make sure to complain if fk fails
+              RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, plane repulse: FK failed for joint %d", i);
+            }
+          }
         }
-        Eigen::Vector3d totalRepulse(0,0,0);
 
-        repulsionPoint_pizza
-        taskpsaceGetPointRepulse()
+        Eigen::Vector3d pos(
+            joint_frames_[i].p.x(),
+            joint_frames_[i].p.y(),
+            joint_frames_[i].p.z());
 
+        totalRepulse += taskpsaceGetPlaneRepulse(pos, repulsionPlanes_table);
       }
 
-      taskpsaceGetPlaneRepulse()
-      
-     
+      if (totalRepulse.norm() > 1e-3)
+      {
+        int chain_dofs = jacobians_per_joint_[i].columns();
+        if (chain_dofs <= 0)
+          chain_dofs = num_joints;
+        KDL::JntArray q_sub(chain_dofs);
+        for (int k = 0; k < chain_dofs; ++k)
+          q_sub(k) = q_(k);
+
+        if (!jac_solvers_per_joint_[i])
+        {
+          RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, Jacobian solver not available for joint %d", i);
+        }
+        else
+        {
+          int jac_result = jac_solvers_per_joint_[i]->JntToJac(q_sub, jacobians_per_joint_[i]);
+
+          if (jac_result >= 0)
+          {
+            Eigen::MatrixXd J_eigen = jacobians_per_joint_[i].data;
+
+            Eigen::Matrix<double, 6, 1> wrench;
+            wrench.setZero();
+            wrench.head<3>() = totalRepulse; // linear force only
+
+            Eigen::VectorXd JtF = J_eigen.transpose() * wrench;
+
+            // Only affect joints up to joint j (chain up to joint j)
+            int chain_dofs = jacobians_per_joint_[i].columns();
+            for (int k = 0; k < chain_dofs && k < num_joints; ++k)
+            {
+              qd_dot_.data(k) += JtF(k);
+            }
+          }
+          else
+          {
+            RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse, Failed to compute Jacobian for joint %d", i);
+          }
+        }
+      }
     }
-    // repulsionPoint_pizza
-    // repulsionPlanes_table
-    
-    KDL::Frame ee_frame;
-    int fk_result = fk_solver_->JntToCart(q_, ee_frame);
-    if (fk_result != 0)
-    {
-      RCLCPP_WARN(get_node()->get_logger(), "taskSpaceRepulse: FK failed for some reason");
-      return;
-    }
-
-    Eigen::Vector3d EE(ee_frame.p.x(),ee_frame.p.y(),ee_frame.p.z());
-
-
-    KDL::Jacobian J(num_joints);
-    jac_solver->JntToJac(q_, J);
-    Eigen::MatrixXd J_eigen = J.data;
-
-    Eigen::Matrix<double,6,1> wrench;
-    wrench.setZero();
-    wrench.head<3>() = totalRepulse; // linear force only
-    
-    Eigen::VectorXd JtF = J_eigen.transpose() * wrench;
-
-    qd_dot_.data += JtF;
-
-    miscData[21] = totalRepulse.x();
-    miscData[22] = totalRepulse.y();
-    miscData[23] = totalRepulse.z();
-
   }
 
   // it is static but it cannot be said such
-  void MyController_class::taskSpaceRepulse_calcRepulseCoefs(pointRep &point){
-    // assuming the linear version : U = 1/2 *b1*(1./d_-1/a1); 
-    //a1= x0
-    //b1= (x0*x1)/(x0 - x1)
-    //x1_10 = 1/(1/a1 + 10/b1)
+  void MyController_class::taskSpaceRepulse_calcRepulseCoefs(pointRep &point)
+  {
+    // assuming the linear version : U = 1/2 *b1*(1./d_-1/a1);
+    // a1= x0
+    // b1= (x0*x1)/(x0 - x1)
+    // x1_10 = 1/(1/a1 + 10/b1)
     point.a = point.dist0;
-    point.b = (point.dist0*point.dist1)/((point.dist0-point.dist1));
-    point.dist10 = 1/(1/point.a + 10/point.b);
-
-
-
+    point.b = (point.dist0 * point.dist1) / ((point.dist0 - point.dist1));
+    point.dist10 = 1 / (1 / point.a + 10 / point.b);
   }
   // in on_activate
-  void MyController_class::taskSpaceRepulse_initHardcodedStuff(){
+  void MyController_class::taskSpaceRepulse_initHardcodedStuff()
+  {
     repulsionPoint_pizza = pointRep(Eigen::Vector3d(0.45, 0, 1.4), 0.5, 0.3, 1);
 
-    //repulsionPoints.emplace_back(Eigen::Vector3d(0.45, 0, 1.4), 0.5, 0.3, 1);
-    // repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.8), 0.4, 0.2, 0);
-    // repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
-    // repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 0);
+    // repulsionPoints.emplace_back(Eigen::Vector3d(0.45, 0, 1.4), 0.5, 0.3, 1);
+    //  repulsionPoints.emplace_back(Eigen::Vector3d(0.3, 0, 1.8), 0.4, 0.2, 0);
+    //  repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0, 1.8), 0.4, 0.2, 0);
+    //  repulsionPoints.emplace_back(Eigen::Vector3d(-0.3, 0.3, 1.8), 0.4, 0.2, 0);
 
     // pointRep rp = pointRep(Eigen::Vector3d(0.45, 0, 1.4), 0.2, 0.1, 2);
     // repulsionPlanes.emplace_back(rp,Eigen::Vector3d(-1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
 
-    repulsionPlanes_table = planeRep_finite(rp,Eigen::Vector3d(-1, 0, 0),Eigen::Vector3d(0, 1, 0), Eigen::Vector2d(-1,-1), Eigen::Vector2d(1,1));
+    pointRep rp = pointRep(Eigen::Vector3d(0.45, 0, 1.4), 0.2, 0.1, 2);
+    repulsionPlanes_table = planeRep_finite(rp, Eigen::Vector3d(0, 0, 1), Eigen::Vector3d(1, 0, 0), Eigen::Vector2d(-1, -1), Eigen::Vector2d(1, 1));
 
+    // debug repulsionPlanes
 
-    //debug repulsionPlanes
-
-    for(int i = 0; i< repulsionPlanes.size();i++)
+    for (int i = 0; i < repulsionPlanes.size(); i++)
     {
-      const auto& rPl = repulsionPlanes[i];
+      const auto &rPl = repulsionPlanes[i];
       RCLCPP_INFO(get_node()->get_logger(), "\033[31m repulsion plane\033[0m %d: \033[32m dist0:\033[0m %3.2f, \033[32m dist1:\033[0m %3.2f, \033[32m dist10:\033[0m %3.2f,"
-      "\033[32m a:\033[0m%3.2f, \033[32m b:\033[0m%3.2f, \033[32m k:\033[0m%3.2f, "
-      "\033[31m planeX vector:\033[0m[ %3.3f; %3.3f; %3.3f ], \033[31m planeY vector:\033[0m[ %3.3f; %3.3f; %3.3f ] ",
-        i , rPl.centerPoint.dist0,rPl.centerPoint.dist1,rPl.centerPoint.dist10,
-        rPl.centerPoint.a,rPl.centerPoint.b,rPl.centerPoint.k ,
-        rPl.planeX.x(),rPl.planeX.y(),rPl.planeX.z(), rPl.planeY.x(),rPl.planeY.y(),rPl.planeY.z()
-      );
-
+                                            "\033[32m a:\033[0m%3.2f, \033[32m b:\033[0m%3.2f, \033[32m k:\033[0m%3.2f, "
+                                            "\033[31m planeX vector:\033[0m[ %3.3f; %3.3f; %3.3f ], \033[31m planeY vector:\033[0m[ %3.3f; %3.3f; %3.3f ] ",
+                  i, rPl.centerPoint.dist0, rPl.centerPoint.dist1, rPl.centerPoint.dist10,
+                  rPl.centerPoint.a, rPl.centerPoint.b, rPl.centerPoint.k,
+                  rPl.planeX.x(), rPl.planeX.y(), rPl.planeX.z(), rPl.planeY.x(), rPl.planeY.y(), rPl.planeY.z());
     }
-
   }
 
-  void MyController_class::ex5_potentialFields(){
-    jointLimitRepulse(); //assumes 1kHz refresh rate
+  void MyController_class::ex5_potentialFields()
+  {
+    jointLimitRepulse(); // assumes 1kHz refresh rate
     taskSpaceRepulse();
-
-
   }
 
 } // namespace MyController_namespace

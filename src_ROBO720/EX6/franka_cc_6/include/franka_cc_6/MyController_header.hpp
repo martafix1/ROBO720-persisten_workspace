@@ -115,6 +115,10 @@ class MyController_class : public controller_interface::ControllerInterface {
   std::array<std::unique_ptr<KDL::ChainFkSolverPos_recursive>, 7> fk_solvers_per_joint_;
   std::array<KDL::Frame, 7> joint_frames_; // stores FK results for each joint
   
+  // Jacobian solvers for each joint (to get Jacobian from root to each joint)
+  std::array<std::unique_ptr<KDL::ChainJntToJacSolver>, 7> jac_solvers_per_joint_;
+  std::array<KDL::Jacobian, 7> jacobians_per_joint_; // stores Jacobian results for each joint
+  
 
   //Joint space state
   KDL::JntArray qd_, qd_dot_, qd_ddot_;
@@ -154,7 +158,10 @@ class MyController_class : public controller_interface::ControllerInterface {
     double a;
     double b;
 
-    pointRep(const Eigen::Vector3d& x_, double d0, double d1,double k)
+    // Default constructor
+    pointRep() : x(0,0,0), dist0(0), dist1(0), dist10(0), k(0), a(0), b(0) {}
+
+    pointRep(const Eigen::Vector3d& x_, double d0, double d1, double k)
         : x(x_), dist0(d0), dist1(d1), dist10(0), k(k), a(0), b(0)
     {
         MyController_class::taskSpaceRepulse_calcRepulseCoefs(*this);
@@ -173,6 +180,10 @@ class MyController_class : public controller_interface::ControllerInterface {
     Eigen::Vector2d l2;
     // Eigen::Vector2d l3;
     // Eigen::Vector2d l4;
+
+    // Default constructor
+    planeRep_finite() 
+      : centerPoint(), direction(0,0,1), planeX(1,0,0), planeY(0,1,0), l1(-1,-1), l2(1,1) {}
 
     planeRep_finite(const pointRep centerPoint_, const Eigen::Vector3d direction_, const Eigen::Vector3d planeX_,
        const Eigen::Vector2d l1_, const Eigen::Vector2d l2_)
@@ -300,6 +311,8 @@ class MyController_class : public controller_interface::ControllerInterface {
   static void taskSpaceRepulse_calcRepulseCoefs(pointRep &point);
   void taskSpaceRepulse_initHardcodedStuff();
   bool useJointSpaceInputs = false;
+  Eigen::Vector3d taskpsaceGetPlaneRepulse( Eigen::Vector3d RobotPoint, planeRep_finite rplane );
+  Eigen::Vector3d taskpsaceGetPointRepulse( Eigen::Vector3d RobotPoint, pointRep rp );
 
 
 
