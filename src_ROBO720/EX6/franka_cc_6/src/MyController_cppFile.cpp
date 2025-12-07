@@ -82,8 +82,6 @@ namespace MyController_namespace
     // Get current force-torque reading
     auto wrench = getFTSensorWrench();
 
-    x_wrench_ << wrench.force.x, wrench.force.y, wrench.force.z,
-                wrench.torque.x, wrench.torque.y, wrench.torque.z;
 
     // switcheroo as they cannot be assigned.
     for (int i = 0; i < num_joints; i++)
@@ -95,6 +93,18 @@ namespace MyController_namespace
     }
 
     fk_solver_->JntToCart(q_, x_);
+
+
+    x_wrench_ << wrench.force.x, wrench.force.y, wrench.force.z,
+                wrench.torque.x, wrench.torque.y, wrench.torque.z;
+
+    // the torques (moments) ARE IGNORED - set to 0
+    Eigen::Vector3d F_fs = x_wrench_.head<3>();
+    Eigen::Vector3d M_fs = Eigen::Vector3d::Zero();
+    Eigen::Matrix3d R_base_tool = Eigen::Map<const Eigen::Matrix<double,3,3,Eigen::RowMajor>>(x_.M.data);
+    F_fs = R_base_tool * Rfs_eigen * F_fs;
+
+    x_wrench_ << F_fs, M_fs;
 
     // // required for potential fields:
     // qd_dot_.data.setZero();
@@ -134,15 +144,15 @@ namespace MyController_namespace
     tau_d_.data = aux_d_.data + comp_d_.data;
 
 
-     for (int i = 0; i < num_joints; i++)
-    {
-      miscData[i+40] = Kp_.data.cwiseProduct(e_.data)(i);
-      miscData[i+50] = Kd_.data.cwiseProduct(e_dot_.data)(i);
-      miscData[i+60] = qd_ddot_.data(i);
-      miscData[i+70] = aux_d_(i);
-      miscData[i+80] = comp_d_(i);
-      miscData[i+90] = tau_d_(i);
-    }
+    //  for (int i = 0; i < num_joints; i++)
+    // {
+    //   miscData[i+40] = Kp_.data.cwiseProduct(e_.data)(i);
+    //   miscData[i+50] = Kd_.data.cwiseProduct(e_dot_.data)(i);
+    //   miscData[i+60] = qd_ddot_.data(i);
+    //   miscData[i+70] = aux_d_(i);
+    //   miscData[i+80] = comp_d_(i);
+    //   miscData[i+90] = tau_d_(i);
+    // }
 
     // tau_d_.data = (G_.data) - qdot_.data * 0.5;
     // Eigen::VectorXd tau = G_.data - qdot_.data;
@@ -758,6 +768,14 @@ namespace MyController_namespace
     x_wrench_.resize(6);
     x_wrench_d.resize(6);
     x_wrench_d.setZero();
+    x_wrench_d(2) = -5;
+
+
+    KDL::Rotation R = KDL::Rotation::RotX(M_PI/2);
+
+      for(int r=0; r<3; r++)
+        for(int c=0; c<3; c++)
+            Rfs_eigen(r,c) = R(r,c);
 
     fctr_Spos.resize(6);
     fctr_Spos.setConstant(1);
@@ -1055,11 +1073,7 @@ namespace MyController_namespace
       fctr_Spos.setConstant(1);
       fctr_Spos(2) = 0; //z axis
 
-      KDL::Rotation R = KDL::Rotation::RotX(M_PI/2);
 
-      for(int r=0; r<3; r++)
-        for(int c=0; c<3; c++)
-            Rfs_eigen(r,c) = R(r,c);
 
       for (int i = 0; i < num_joints; i++)
       {
@@ -1224,6 +1238,14 @@ namespace MyController_namespace
       for (int i = 0; i < num_joints; ++i)
         qd_dot_(i) = qdot_cmd(i);
 
+      for (int i = 0; i < 6; i++)
+      {
+        miscData[i+40] = 0;
+        miscData[i+50] = F_x(i);
+        miscData[i+60] = x_wrench_(i);
+        miscData[i+70] = F_x(i);
+      }
+
       break;
     }
 
@@ -1255,13 +1277,23 @@ namespace MyController_namespace
                       + Kd_cartesian_.cwiseProduct(e_xdot);
 
       //fctr_Spos
-      Eigen::VectorXd Kp_force_cartesian = Eigen::VectorXd::Ones(6) * 1.2;
-      Eigen::VectorXd F_force = Kp_cartesian_.cwiseProduct(x_wrench_d-x_wrench_); //TODO use Rfs_eigen, maybe needs also EE frame? 
+      Eigen::VectorXd Kp_force_cartesian = Eigen::VectorXd::Ones(6) * 0.2;
+      Eigen::VectorXd F_force = Kp_force_cartesian.cwiseProduct(x_wrench_d-x_wrench_); //TODO use Rfs_eigen, maybe needs also EE frame? 
       Eigen::VectorXd ones6 = Eigen::VectorXd::Ones(6);
 
       Eigen::VectorXd qdot_cmd = J_damp_pinv * (F_pos.cwiseProduct(fctr_Spos) + F_force.cwiseProduct(ones6 - fctr_Spos));
       for (int i = 0; i < num_joints; ++i)
         qd_dot_(i) = qdot_cmd(i);
+
+
+      for (int i = 0; i < 6; i++)
+      {
+        miscData[i+40] = F_force(i);
+        miscData[i+50] = F_pos(i);
+        miscData[i+60] = x_wrench_(i);
+        miscData[i+70] = (F_pos.cwiseProduct(fctr_Spos) + F_force.cwiseProduct(ones6 - fctr_Spos))(i);
+      }
+
 
       break;
     }

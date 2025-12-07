@@ -438,7 +438,7 @@ class TaskSpaceObjectivePublisher(Node):
                 self.approachPizzaPoint(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             elif func_name == "cutLine":
-                self.reqControllerType = 4
+                self.reqControllerType = 5
                 self.cutPizzaLine(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             elif func_name == "retract":
