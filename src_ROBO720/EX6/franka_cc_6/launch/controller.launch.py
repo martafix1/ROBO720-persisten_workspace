@@ -14,6 +14,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
 from launch.actions import SetEnvironmentVariable
 
 def launch_setup(context, *args, **kwargs):
@@ -43,7 +44,9 @@ def launch_setup(context, *args, **kwargs):
             initial_joint_controllers,
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
 
     # Same nodes as original but with your custom controller config
     robot_state_publisher_node = Node(
@@ -149,12 +152,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "description_package",
-            default_value="franka_description",  # Keep original robot description
+            default_value="franka_cc_6",  # Use your custom package
             description="Description package with robot URDF/XACRO files.",
         ),
         DeclareLaunchArgument(
             "description_file",
-            default_value="effort_panda_arm_ft_sensor.urdf.xacro",  # Keep original robot description
+            default_value="panda_with_cylinder.urdf.xacro",  # Use custom URDF with cylinder
             description="URDF/XACRO description file with the robot.",
         ),
         DeclareLaunchArgument(

@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panda">
+  <!-- Include the original panda arm with FT sensor -->
+  <xacro:include filename="$(find franka_description)/urdf/effort_panda_arm_ft_sensor.urdf.xacro" />
+
+  <!-- Add a red cylinder with collision box -->
+  <!-- Adjust these values to your desired position, size, and color -->
+  
+  <link name="red_cylinder">
+    <visual>
+      <!-- Position: x, y, z (in meters) -->
+      <origin xyz="0.5 0.0 1.11" rpy="0 0 0" />
+      <geometry>
+        <!-- Radius and length of the cylinder (in meters) -->
+        <cylinder radius="0.2" length="0.02" />
+      </geometry>
+      <material name="red">
+        <color rgba="1.0 0.0 0.0 1.0" /> <!-- Red: RGBA -->
+      </material>
+    </visual>
+    <collision>
+      <!-- Same origin and geometry as visual for consistent collision -->
+      <origin xyz="0.5 0.0 1.11" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.2" length="0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1" /> <!-- Mass in kg -->
+      <inertia ixx="1e-5" ixy="0.0" ixz="0.0"
+               iyy="1e-5" iyz="0.0"
+               izz="1e-5" />
+    </inertial>
+  </link>
+
+  <!-- Fix the cylinder to the world (base) link -->
+  <joint name="world_cylinder" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="world" />
+    <child link="red_cylinder" />
+  </joint>
+
+</robot>

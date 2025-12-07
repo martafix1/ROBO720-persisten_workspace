@@ -84,6 +84,11 @@ install(DIRECTORY config/
   DESTINATION share/${PROJECT_NAME}/config
 )
 
+# Install URDF files
+install(DIRECTORY urdf/
+  DESTINATION share/${PROJECT_NAME}/urdf
+)
+
 # Install plugin description
 install(FILES MyController_plugins.xml
   DESTINATION share/${PROJECT_NAME}

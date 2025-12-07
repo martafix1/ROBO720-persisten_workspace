@@ -79,6 +79,12 @@ namespace MyController_namespace
 
     updateJointStates();
 
+    // Get current force-torque reading
+    auto wrench = getFTSensorWrench();
+
+    x_wrench_ << wrench.force.x, wrench.force.y, wrench.force.z,
+                wrench.torque.x, wrench.torque.y, wrench.torque.z;
+
     // switcheroo as they cannot be assigned.
     for (int i = 0; i < num_joints; i++)
     {
@@ -86,18 +92,6 @@ namespace MyController_namespace
       qdot_(i) = velocity_interface_values_(i);
       exertedEffort_(i) = effort_interface_values_(i);
 
-      // if (useJointSpaceInputs)
-      // {
-      //   qd_(i) = req_pos[i];
-      //   qd_dot_(i) = req_vel[i];
-      //   qd_ddot_(i) = req_acc[i];
-
-      //   double w = 2;    // rad/s
-      //   double damp = 1; // relative
-
-      //   Kp_.data = (w * w) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
-      //   Kd_.data = (w * damp * 2) * (Eigen::VectorXd(7) << 2.2, 2.0, 1.8, 1.6, 1.4, 1.2, 1.0).finished();
-      // }
     }
 
     fk_solver_->JntToCart(q_, x_);
@@ -106,7 +100,7 @@ namespace MyController_namespace
     // qd_dot_.data.setZero();
 
     // rate limiter
-    if (rateLimiter_10_1 < 50)
+    if (rateLimiter_10_1 < 5)
     {
       rateLimiter_10_1++;
     }
@@ -115,7 +109,7 @@ namespace MyController_namespace
       rateLimiter_10_1 = 0;
       if (!useJointSpaceInputs)
       {
-        ex3_smarterControllers(controllerType); // 100Hz
+        ex3_smarterControllers(controllerType); // 200Hz
       }
       //ex5_potentialFields();
     }
@@ -131,6 +125,8 @@ namespace MyController_namespace
 
     // switch from kdl JntArray to eigen for matrix operations
     // Eigen::VectorXd qdot_eigen = qdot_.data;
+
+    
 
     aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
     // aux_d_.data = (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
@@ -446,6 +442,19 @@ namespace MyController_namespace
           RCLCPP_INFO(get_node()->get_logger(), "Kd_cart updated from topic");
         });
 
+    // Force-torque sensor subscriber
+    ft_sensor_subscriber_ = node->create_subscription<geometry_msgs::msg::Wrench>(
+        "/sensor_joint/force_torque",
+        10,
+        [this](const geometry_msgs::msg::Wrench::SharedPtr msg)
+        {
+          std::lock_guard<std::mutex> lock(ft_sensor_mutex_);
+          ft_sensor_wrench_ = *msg;
+          // RCLCPP_DEBUG(get_node()->get_logger(), 
+          //   "FT Sensor: Force[%.3f, %.3f, %.3f] Torque[%.3f, %.3f, %.3f]",
+          //   ft_sensor_wrench_.force.x, ft_sensor_wrench_.force.y, ft_sensor_wrench_.force.z,
+          //   ft_sensor_wrench_.torque.x, ft_sensor_wrench_.torque.y, ft_sensor_wrench_.torque.z);
+        });
     auto parameters_client =
         std::make_shared<rclcpp::AsyncParametersClient>(get_node(), "/robot_state_publisher");
     parameters_client->wait_for_service();
@@ -746,6 +755,13 @@ namespace MyController_namespace
 
     twist_d.resize(6);
 
+    x_wrench_.resize(6);
+    x_wrench_d.resize(6);
+    x_wrench_d.setZero();
+
+    fctr_Spos.resize(6);
+    fctr_Spos.setConstant(1);
+
     // for (int i = 0; i < SaveDataMax; i++) {
     //   SaveData_[i] = 0.0;
     // }
@@ -1010,6 +1026,53 @@ namespace MyController_namespace
       break;
     }
 
+    case 4:
+    {
+      Kp_.data.setConstant(0);
+      qd_dot_.data.setConstant(0);
+
+      for (int i = 0; i < num_joints; i++)
+      {
+        Kd_.data(i) = Kp_joint_defaults[i];
+      }
+      for (int i = 0; i < 6; i++)
+      {
+        Kp_cartesian_(i) = Kp_cart_defaults[i];
+        Kd_cartesian_(i) = Kd_cart_defaults[i];
+      }
+      RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
+      break;
+
+
+      break;
+    }
+
+    case 5:
+    {
+      Kp_.data.setConstant(0);
+      qd_dot_.data.setConstant(0);
+      
+      fctr_Spos.setConstant(1);
+      fctr_Spos(2) = 0; //z axis
+
+      KDL::Rotation R = KDL::Rotation::RotX(M_PI/2);
+
+      for(int r=0; r<3; r++)
+        for(int c=0; c<3; c++)
+            Rfs_eigen(r,c) = R(r,c);
+
+      for (int i = 0; i < num_joints; i++)
+      {
+        Kd_.data(i) = Kp_joint_defaults[i];
+      }
+      for (int i = 0; i < 6; i++)
+      {
+        Kp_cartesian_(i) = Kp_cart_defaults[i];
+        Kd_cartesian_(i) = Kd_cart_defaults[i];
+      }
+      RCLCPP_WARN(get_node()->get_logger(), " \033[41m controller expects \033[0m taskspace inputs");
+      break;
+    }
 
     case 2:
     {
@@ -1130,6 +1193,78 @@ namespace MyController_namespace
       break;
     }
 
+
+    case 4:
+    {
+      KDL::Twist x_err = KDL::diff(x_, xd_);
+
+      Eigen::VectorXd xd_dot = twist_d; // stationary target
+      Eigen::VectorXd e_x(6);
+      e_x << x_err.vel.x(), x_err.vel.y(), x_err.vel.z(),
+           x_err.rot.x(), x_err.rot.y(), x_err.rot.z();
+
+      KDL::Jacobian J_(num_joints);
+      int ret = jac_solver->JntToJac(q_, J_);
+      Eigen::MatrixXd J_eig = J_.data;
+      Eigen::VectorXd xdot_ = J_eig * qdot_.data;  // 6x1
+      
+      Eigen::VectorXd e_xdot = xd_dot -  xdot_;
+
+      
+
+      double lambda = 0.05; // damping factor
+      Eigen::MatrixXd I6 = Eigen::MatrixXd::Identity(6,6);
+      Eigen::MatrixXd J_damp_pinv = J_eig.transpose() *  //J#
+                              ( (J_eig * J_eig.transpose() + lambda*lambda * I6).inverse() );
+        
+      Eigen::VectorXd F_x = Kp_cartesian_.cwiseProduct(e_x)
+                      + Kd_cartesian_.cwiseProduct(e_xdot);
+
+      Eigen::VectorXd qdot_cmd = J_damp_pinv * F_x;
+      for (int i = 0; i < num_joints; ++i)
+        qd_dot_(i) = qdot_cmd(i);
+
+      break;
+    }
+
+    case 5:
+    {
+
+      KDL::Twist x_err = KDL::diff(x_, xd_);
+
+      Eigen::VectorXd xd_dot = twist_d; // stationary target
+      Eigen::VectorXd e_x(6);
+      e_x << x_err.vel.x(), x_err.vel.y(), x_err.vel.z(),
+           x_err.rot.x(), x_err.rot.y(), x_err.rot.z();
+
+      KDL::Jacobian J_(num_joints);
+      int ret = jac_solver->JntToJac(q_, J_);
+      Eigen::MatrixXd J_eig = J_.data;
+      Eigen::VectorXd xdot_ = J_eig * qdot_.data;  // 6x1
+      
+      Eigen::VectorXd e_xdot = xd_dot -  xdot_;
+
+      
+
+      double lambda = 0.05; // damping factor
+      Eigen::MatrixXd I6 = Eigen::MatrixXd::Identity(6,6);
+      Eigen::MatrixXd J_damp_pinv = J_eig.transpose() *  //J#
+                              ( (J_eig * J_eig.transpose() + lambda*lambda * I6).inverse() );
+        
+      Eigen::VectorXd F_pos = Kp_cartesian_.cwiseProduct(e_x)
+                      + Kd_cartesian_.cwiseProduct(e_xdot);
+
+      //fctr_Spos
+      Eigen::VectorXd Kp_force_cartesian = Eigen::VectorXd::Ones(6) * 1.2;
+      Eigen::VectorXd F_force = Kp_cartesian_.cwiseProduct(x_wrench_d-x_wrench_); //TODO use Rfs_eigen, maybe needs also EE frame? 
+      Eigen::VectorXd ones6 = Eigen::VectorXd::Ones(6);
+
+      Eigen::VectorXd qdot_cmd = J_damp_pinv * (F_pos.cwiseProduct(fctr_Spos) + F_force.cwiseProduct(ones6 - fctr_Spos));
+      for (int i = 0; i < num_joints; ++i)
+        qd_dot_(i) = qdot_cmd(i);
+
+      break;
+    }
 
     case 2: // Task-space resolved-rate PD control
     {

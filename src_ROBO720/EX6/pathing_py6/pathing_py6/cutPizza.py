@@ -31,15 +31,21 @@ Kd_cart_scale = np.ones(6)  # All 1.0 for cartesian
 jointCenteringRepulsion_scale = np.array([1.0, 0.1, 3.0, 0.5, 1.0, 1.0, 1.0])  # Per-joint scaling
 
 # Default gain values
-default_Kp_joint = 2.0
-default_Kd_joint = 1.0
-default_Kp_cart = 2.0
-default_Kd_cart = 1.0
+w = 3
+damp = 1.2
+default_Kp_joint =  w*w
+default_Kd_joint = 2*w*damp
+
+w = 6
+damp = 1.4
+
+default_Kp_cart = w*w
+default_Kd_cart = 2*w*damp
 default_jointCenteringRepulsion = 1.0
 
 
 JointSpaceControllers = [0]
-TaskSpaceControllers = [2,3]
+TaskSpaceControllers = [2,3,4,5]
 
 
 
@@ -48,7 +54,9 @@ class TaskSpaceObjectivePublisher(Node):
     def __init__(self):
         try:
             # pizza stuff
-            self.x__pizza_center = np.array([0.45, 0, 1.4])
+            #self.x__pizza_center = np.array([0.56, 0, 1.34]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
+            #self.x__pizza_center = np.array([0.50, 0, 1.34]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
+            self.x__pizza_center = np.array([0.50, 0, 1.30]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
             self.x__pizza_cutting_direction = np.array([0,0,-1])
             self.pizza_radius = 0.2 
             self.x__restPosition  = self.x__pizza_center - 0.2*self.x__pizza_cutting_direction
@@ -89,7 +97,7 @@ class TaskSpaceObjectivePublisher(Node):
 
             self.currentLine = 0
             self.maxLines = 4
-            self.slowDownConst = 1
+            self.slowDownConst = 1.5
 
             self.initSeq = pizzaCutSequence1_init
             self.loopSeq = pizzaCutSequence1
@@ -270,6 +278,13 @@ class TaskSpaceObjectivePublisher(Node):
         H2 =  t**3 - 2*t**2 + t
         H3 =  t**3 - t**2
 
+        # Derivatives of basis functions
+        dH0 =  6*t**2 - 6*t
+        dH1 = -6*t**2 + 6*t
+        dH2 =  3*t**2 - 4*t + 1
+        dH3 =  3*t**2 - 2*t
+
+
         p0 = startPoint
         p1 = endPoint
         v0 = launchVector
@@ -277,7 +292,12 @@ class TaskSpaceObjectivePublisher(Node):
 
 
         x = H0*p0 + H1*p1 + H2*v0 + H3*v1
-        return x
+
+        # Velocity wrt SPLINE t
+        dx_dt = dH0*p0 + dH1*p1 + dH2*v0 + dH3*v1
+
+        xdot = dx_dt * (1.0 / time_per_movement)
+        return x, xdot
 
     def approachPizzaPoint(self, time, time_per_movement=3, n_line = 0, n_lines_max = 4 ):
 
@@ -288,13 +308,13 @@ class TaskSpaceObjectivePublisher(Node):
         start = self.x__restPosition 
         approachDir = self.x__pizza_cutting_direction 
         
-        x = self.cube3D_spline(time=time, time_per_movement=time_per_movement,startPoint=start,
+        x, xdot = self.cube3D_spline(time=time, time_per_movement=time_per_movement,startPoint=start,
                                endPoint=pizzaPoint, launchVector= np.array([0,0,0]), ApproachVector= approachDir)
         
         self.xd_pos = x
         self.xd_dir = self.x__pizza_cutting_direction
         self.xd_roll = 0
-        self.xd_dot_linear = np.array([0,0,0])
+        self.xd_dot_linear = xdot
         self.xd_dot_angular = np.array([0,0,0])
 
 
@@ -309,14 +329,14 @@ class TaskSpaceObjectivePublisher(Node):
         start = self.x__restPosition 
         approachDir = self.x__pizza_cutting_direction 
         
-        x = self.cube3D_spline(time=time, time_per_movement=time_per_movement,startPoint=pizzaPoint,
+        x, xdot = self.cube3D_spline(time=time, time_per_movement=time_per_movement,startPoint=pizzaPoint,
                                endPoint=start, launchVector= -approachDir , ApproachVector= np.array([0,0,0]))
         
 
         self.xd_pos = x
         self.xd_dir = self.x__pizza_cutting_direction
         self.xd_roll = 0
-        self.xd_dot_linear = np.array([0,0,0])
+        self.xd_dot_linear = xdot
         self.xd_dot_angular = np.array([0,0,0])
 
         pass
@@ -335,6 +355,7 @@ class TaskSpaceObjectivePublisher(Node):
 
 
             if self.moving == False:
+                self.sendCommands()
                 return
 
             
@@ -382,10 +403,10 @@ class TaskSpaceObjectivePublisher(Node):
             #self.get_logger().info(f"Final: init done: {self.initDone},  index: {self.currentIndex}, reciepeie time: {fp_time}, real time {now}")
 
 
-            reqControllerType = self.currentControllerType
+            self.reqControllerType = self.currentControllerType
                 
             if func_name == "arm":
-                reqControllerType = 2
+                self.reqControllerType = 2
                 self.xd_pos = self.x__restPosition
                 self.xd_dir = np.array([0,0,-1])
                 self.xd_roll = 0
@@ -413,21 +434,22 @@ class TaskSpaceObjectivePublisher(Node):
             elif func_name == "wait":
                 pass
             elif func_name == "approach":
-                reqControllerType = 2
+                self.reqControllerType = 4
                 self.approachPizzaPoint(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             elif func_name == "cutLine":
-                reqControllerType = 2
+                self.reqControllerType = 4
                 self.cutPizzaLine(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             elif func_name == "retract":
-                reqControllerType = 2
+                self.reqControllerType = 4
                 self.retractFromPizzaPoint(time=fp_time,time_per_movement=fp_duration,n_line=self.currentLine,n_lines_max=self.maxLines)
                 pass
             
             elif func_name == "resetJointsAbovePizza":
-                reqControllerType = 0
-                qd_pos_deg = np.array([0,-25,0,-140,0,120,0])
+                self.reqControllerType = 0
+                # qd_pos_deg = np.array([0,-25,0,-140,0,120,0])
+                qd_pos_deg = np.array([0,-15,0,-128,0,110,0])
                 self.qd_pos = qd_pos_deg*(np.pi/180.0)
                 pass
 
@@ -450,105 +472,110 @@ class TaskSpaceObjectivePublisher(Node):
 
 
 
-            ## make sure to request correct controller type
-            if self.currentControllerType != reqControllerType:
-                self.currentControllerType = reqControllerType
-                
-                msg = Int32()
-                msg.data = int(self.currentControllerType)   # ensure Python int is converted cleanly
-                self.pub_controller_type.publish(msg)
-            else:
-                pass
             
+            self.sendCommands()
 
-            if self.currentControllerType in TaskSpaceControllers: # some stuff happens only for taskspace controll
-                
-                # solve problems with rotations (x is first for roll 0, then y)
-                z_axis = self.xd_dir #pointing direction is usually z axis
-                roll_angle = self.xd_roll
-                # Choose an arbitrary y-axis (not parallel to z)
-                tmp = np.array([1, 0, 0])
-                if np.allclose(z_axis, tmp):
-                    tmp = np.array([0, 1, 0])
-
-                # Construct orthonormal frame
-                x_axis = np.cross(tmp, z_axis)
-                x_axis = x_axis / np.linalg.norm(x_axis) #must be like this to autocast float
-                y_axis = np.cross(z_axis, x_axis)
-
-                # Apply roll around z
-                roll_rot = scipy.spatial.transform.Rotation.from_rotvec(roll_angle * z_axis)
-                rot_matrix = np.column_stack((x_axis, y_axis, z_axis))  # 3x3 rotation
-                rot = scipy.spatial.transform.Rotation.from_matrix(rot_matrix) * roll_rot
-
-                # Convert to quaternion
-                quat = rot.as_quat()  # returns [x, y, z, w]
-
-
-                ## message prep
-                point = MultiDOFJointTrajectoryPoint()
-                # Position + Orientation as Transform
-                transform = Transform()
-                transform.translation.x = float(self.xd_pos[0])
-                transform.translation.y = float(self.xd_pos[1])
-                transform.translation.z = float(self.xd_pos[2])
-                transform.rotation.x = quat[0]
-                transform.rotation.y = quat[1]
-                transform.rotation.z = quat[2]
-                transform.rotation.w = quat[3]  
-
-                # Velocity as Twist
-                velocity = Twist()
-                velocity.linear.x = float(self.xd_dot_linear[0])
-                velocity.linear.y = float(self.xd_dot_linear[1])
-                velocity.linear.z = float(self.xd_dot_linear[2])
-                velocity.angular.x = float(self.xd_dot_angular[0])
-                velocity.angular.y = float(self.xd_dot_angular[1])
-                velocity.angular.z = float(self.xd_dot_angular[2])
-
-                # Acceleration as Twist
-                acceleration = Twist()
-                acceleration.linear.x = 0.0
-                acceleration.linear.y = 0.0
-                acceleration.linear.z = 0.0
-                acceleration.angular.x = 0.0
-                acceleration.angular.y = 0.0
-                acceleration.angular.z = 0.0
-
-                point.transforms.append(transform)
-                point.velocities.append(velocity)
-                point.accelerations.append(acceleration)
-                point.time_from_start.sec = 2
-                point.time_from_start.nanosec = 0
-
-                msg = MultiDOFJointTrajectory()
-                msg.joint_names = ['end_effector']  # Required field
-
-                msg.points.append(point)
-                self.publisher_.publish(msg)
-
-            elif self.currentControllerType in JointSpaceControllers:
-
-                point = JointTrajectoryPoint()
-
-                self.qd_pos = self.qd_pos.astype(float)
-                self.qd_vel = self.qd_vel.astype(float)
-                self.qd_acc = self.qd_acc.astype(float)
-
-                point.positions = self.qd_pos.tolist()
-                point.velocities = self.qd_vel.tolist()
-                point.accelerations = self.qd_acc.tolist()
-
-                self.publisher_Jnt.publish(point)
-
-            else:
-                self.get_logger().error(f"Unknown controller type : {self.currentControllerType}")
-
-                pass
+            
 
 
         except Exception as e:
             self.get_logger().error(f"Error in timer_callback: {e}")
+
+
+    def sendCommands(self):
+        ## make sure to request correct controller type
+        if self.currentControllerType != self.reqControllerType:
+            self.currentControllerType = self.reqControllerType
+            
+            msg = Int32()
+            msg.data = int(self.currentControllerType)   # ensure Python int is converted cleanly
+            self.pub_controller_type.publish(msg)
+        else:
+            pass
+
+        if self.currentControllerType in TaskSpaceControllers: # some stuff happens only for taskspace controll      
+            # solve problems with rotations (x is first for roll 0, then y)
+            z_axis = self.xd_dir #pointing direction is usually z axis
+            roll_angle = self.xd_roll
+            # Choose an arbitrary y-axis (not parallel to z)
+            tmp = np.array([1, 0, 0])
+            if np.allclose(z_axis, tmp):
+                tmp = np.array([0, 1, 0])
+
+            # Construct orthonormal frame
+            x_axis = np.cross(tmp, z_axis)
+            x_axis = x_axis / np.linalg.norm(x_axis) #must be like this to autocast float
+            y_axis = np.cross(z_axis, x_axis)
+
+            # Apply roll around z
+            roll_rot = scipy.spatial.transform.Rotation.from_rotvec(roll_angle * z_axis)
+            rot_matrix = np.column_stack((x_axis, y_axis, z_axis))  # 3x3 rotation
+            rot = scipy.spatial.transform.Rotation.from_matrix(rot_matrix) * roll_rot
+
+            # Convert to quaternion
+            quat = rot.as_quat()  # returns [x, y, z, w]
+
+
+            ## message prep
+            point = MultiDOFJointTrajectoryPoint()
+            # Position + Orientation as Transform
+            transform = Transform()
+            transform.translation.x = float(self.xd_pos[0])
+            transform.translation.y = float(self.xd_pos[1])
+            transform.translation.z = float(self.xd_pos[2])
+            transform.rotation.x = quat[0]
+            transform.rotation.y = quat[1]
+            transform.rotation.z = quat[2]
+            transform.rotation.w = quat[3]  
+
+            # Velocity as Twist
+            velocity = Twist()
+            velocity.linear.x = float(self.xd_dot_linear[0])
+            velocity.linear.y = float(self.xd_dot_linear[1])
+            velocity.linear.z = float(self.xd_dot_linear[2])
+            velocity.angular.x = float(self.xd_dot_angular[0])
+            velocity.angular.y = float(self.xd_dot_angular[1])
+            velocity.angular.z = float(self.xd_dot_angular[2])
+
+            # Acceleration as Twist
+            acceleration = Twist()
+            acceleration.linear.x = 0.0
+            acceleration.linear.y = 0.0
+            acceleration.linear.z = 0.0
+            acceleration.angular.x = 0.0
+            acceleration.angular.y = 0.0
+            acceleration.angular.z = 0.0
+
+            point.transforms.append(transform)
+            point.velocities.append(velocity)
+            point.accelerations.append(acceleration)
+            point.time_from_start.sec = 2
+            point.time_from_start.nanosec = 0
+
+            msg = MultiDOFJointTrajectory()
+            msg.joint_names = ['end_effector']  # Required field
+
+            msg.points.append(point)
+            self.publisher_.publish(msg)
+
+        elif self.currentControllerType in JointSpaceControllers:
+
+            point = JointTrajectoryPoint()
+
+            self.qd_pos = self.qd_pos.astype(float)
+            self.qd_vel = self.qd_vel.astype(float)
+            self.qd_acc = self.qd_acc.astype(float)
+
+            point.positions = self.qd_pos.tolist()
+            point.velocities = self.qd_vel.tolist()
+            point.accelerations = self.qd_acc.tolist()
+
+            self.publisher_Jnt.publish(point)
+
+        else:
+            self.get_logger().error(f"Unknown controller type : {self.currentControllerType}")
+
+            pass
 
 
     def _start_input_thread(self):
@@ -573,16 +600,20 @@ class TaskSpaceObjectivePublisher(Node):
             self.get_logger().info(
                 """
             \033[33mCommands:\033[0m
-            help            print help
-            stat            print current values and states
-            stop            stop movement
-            start           start movement
-            ct <int>        select controller
-            jcr <float>     select joint cenetering repulsion scaler
-            kpj <float>     select joint space Kp
-            kdj <float>     select joint space Kd
-            kpc <float>     select task space Kp
-            kdc <float>     select task space Kd
+            help                print help
+            stat                print current values and states
+            stop                stop movement
+            start               start movement
+            ct <int>            select controller
+            jcr <float>         select joint cenetering repulsion scaler
+            kpj <float>         select joint space Kp
+            kdj <float>         select joint space Kd
+            kpc <float>         select task space Kp
+            kdc <float>         select task space Kd
+            mv <x> <y> <z>      set desiered taskspace position
+            dir <x> <y> <z>     set desiered EE point direction
+            roll <float>        set desiered EE roll
+            setq <idx> <val>    set desiered joint position of joint idx in degrees
             """)
 
         elif cmd == "stop":
@@ -607,6 +638,8 @@ class TaskSpaceObjectivePublisher(Node):
                 msg.data = controller_type
                 self.pub_controller_type.publish(msg)
                 self.get_logger().info(f"Controller type set to {controller_type}")
+                self.reqControllerType = controller_type
+                self.currentControllerType = controller_type
             except Exception as e:
                 self.get_logger().warn(f"Invalid controller type command: {e}")
 
@@ -670,6 +703,96 @@ class TaskSpaceObjectivePublisher(Node):
             except Exception as e:
                 self.get_logger().warn(f"Invalid Kd_cart command: {e}")
         
+        elif cmd.startswith("mv "):
+            try:
+                parts = cmd.split()
+                numbers = parts[1:] # the first part is the command 
+                if len(numbers) < 3:
+                    self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, 3 are required; {cmd} ") 
+                else:
+                    if len(numbers) > 3:
+                        self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, ignoring the exces over 3 ") 
+                    try:
+                        floats = [float(x) for x in numbers]
+                        self.xd_pos = np.array(floats)
+                        self.get_logger().info(f"Desiered position set to {self.xd_pos}")
+                    except ValueError as v:
+                        self.get_logger().warn(f"Something is probably not a number; {v}, {cmd} ")
+                    except Exception as e:
+                        self.get_logger().warn(f"idk: {e}")        
+                    
+            except Exception as e:
+                self.get_logger().warn(f"Invalid mv command: {e}")        
+
+        elif cmd.startswith("dir "):
+            try:
+                parts = cmd.split()
+                numbers = parts[1:] # the first part is the command 
+                if len(numbers) < 3:
+                    self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, 3 are required; {cmd} ") 
+                else:
+                    if len(numbers) > 3:
+                        self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, ignoring the exces over 3 ") 
+                    try:
+                        floats = [float(x) for x in numbers]
+                        self.xd_dir = np.array(floats)
+                        self.get_logger().info(f"Desiered pointing direction set to {self.xd_dir}")
+                    except ValueError as v:
+                        self.get_logger().warn(f"Something is probably not a number; {v}, {cmd} ")
+                    except Exception as e:
+                        self.get_logger().warn(f"idk: {e}")        
+                    
+            except Exception as e:
+                self.get_logger().warn(f"Invalid dir command: {e}")            
+
+        elif cmd.startswith("roll "):
+            try:
+                parts = cmd.split()
+                numbers = parts[1:] # the first part is the command 
+                if len(numbers) < 1:
+                    self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, 1 are required; {cmd} ") 
+                else:
+                    if len(numbers) > 1:
+                        self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, ignoring the exces over 1 ") 
+                    try:
+                        self.xd_roll = float(numbers[0]) 
+
+                        self.qd_pos[idx] = val
+                        self.get_logger().info(f"Setting desiered EE roll to {self.xd_roll}")
+                    except ValueError as v:
+                        self.get_logger().warn(f"Something is probably not a number; {v}, {cmd} ")
+                    except Exception as e:
+                        self.get_logger().warn(f"idk: {e}")        
+                    
+            except Exception as e:
+                self.get_logger().warn(f"Invalid roll command: {e}")        
+        
+        elif cmd.startswith("setq "):
+            try:
+                parts = cmd.split()
+                numbers = parts[1:] # the first part is the command 
+                if len(numbers) < 2:
+                    self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, 2 are required; {cmd} ") 
+                else:
+                    if len(numbers) > 2:
+                        self.get_logger().warn(f"Wrong number of positions= {len(numbers)}, ignoring the exces over 2 ") 
+                    try:
+                        idx = int(numbers[0])
+                        val = float(numbers[1]) 
+                        val_rad = val*(np.pi/180)
+                        if idx > 6 or idx < 0:
+                            self.get_logger().warn(f"Invalid joint index= {idx}, must be int between 0 and 6 inclusive ") 
+                        else:
+                            self.qd_pos[idx] = val_rad
+                            self.get_logger().info(f"Setting joint position {idx} to {self.qd_pos[idx]} (radians)")
+                    except ValueError as v:
+                        self.get_logger().warn(f"Something is probably not a number; {v}, {cmd} ")
+                    except Exception as e:
+                        self.get_logger().warn(f"idk: {e}")        
+                    
+            except Exception as e:
+                self.get_logger().warn(f"Invalid setq command: {e}")        
+
         else:
             self.get_logger().warn(f"Unknown command: '{cmd}'")
 

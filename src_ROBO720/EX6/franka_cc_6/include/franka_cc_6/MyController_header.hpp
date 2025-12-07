@@ -45,6 +45,8 @@
 
 // Service
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/wrench_stamped.hpp"
+#include "geometry_msgs/msg/wrench.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 // #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 // #include <tf2/LinearMath/Transform.hpp>
@@ -139,6 +141,14 @@ class MyController_class : public controller_interface::ControllerInterface {
   // EEf
   KDL::Frame x_, xd_;
   Eigen::VectorXd twist_d; //6
+  
+  // force sensor
+  Eigen::VectorXd x_wrench_; //6
+  Eigen::Matrix3d Rfs_eigen; // to rotate the sensors frame of reference. Ignore torques
+
+  // force control
+  Eigen::VectorXd fctr_Spos; //6
+  Eigen::VectorXd x_wrench_d; //6
 
   
 
@@ -257,8 +267,11 @@ class MyController_class : public controller_interface::ControllerInterface {
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kd_joint_subscriber_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kp_cart_subscriber_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr Kd_cart_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::Wrench>::SharedPtr ft_sensor_subscriber_;  // Force-torque sensor subscriber
 
-  // Default gain values (modifiable at runtime via topics)
+  // Force-torque sensor data
+  geometry_msgs::msg::Wrench ft_sensor_wrench_;  // Current F/T measurement
+  mutable std::mutex ft_sensor_mutex_;  // Thread-safe access to wrench data (mutable for const access)
   std::array<float,7> Kp_joint_defaults = {2.0f,2.0f,2.0f,2.0f,2.0f,2.0f,2.0f};
   std::array<float,7> Kd_joint_defaults = {1.0f,1.0f,1.0f,1.0f,1.0f,1.0f,1.0f};
   std::array<float,6> Kp_cart_defaults = {2.0f,2.0f,2.0f,1.0f,1.0f,1.0f};
@@ -302,6 +315,13 @@ class MyController_class : public controller_interface::ControllerInterface {
   double compareFrames(KDL::Frame a, KDL::Frame b);
   int rateLimiter_10_1 = 0;
   int rateLimiter_10_2 = 0;
+
+  // Force-torque sensor helper function
+  geometry_msgs::msg::Wrench getFTSensorWrench() const
+  {
+    std::lock_guard<std::mutex> lock(ft_sensor_mutex_);
+    return ft_sensor_wrench_;
+  }
 
 
   void ex5_potentialFields();
