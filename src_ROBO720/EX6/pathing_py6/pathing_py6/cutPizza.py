@@ -39,9 +39,15 @@ default_Kd_joint = 2*w*damp
 w = 6
 damp = 1.4
 
-default_Kp_cart = w*w
-default_Kd_cart = 2*w*damp
+default_Kp_cart_4 = w*w
+default_Kd_cart_4 = 2*w*damp
 default_jointCenteringRepulsion = 1.0
+
+w = 10
+damp = 1.3
+
+default_Kp_cart_5 = w*w
+default_Kd_cart_5 = 2*w*damp
 
 
 JointSpaceControllers = [0]
@@ -56,7 +62,7 @@ class TaskSpaceObjectivePublisher(Node):
             # pizza stuff
             #self.x__pizza_center = np.array([0.56, 0, 1.34]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
             #self.x__pizza_center = np.array([0.50, 0, 1.34]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
-            self.x__pizza_center = np.array([0.50, 0, 1.30]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
+            self.x__pizza_center = np.array([0.50, 0, 1.2]) # for cutting  pizza use lower z, like at z=1.32, 1.34 is above the surface
             self.x__pizza_cutting_direction = np.array([0,0,-1])
             self.pizza_radius = 0.2 
             self.x__restPosition  = self.x__pizza_center - 0.2*self.x__pizza_cutting_direction
@@ -74,12 +80,12 @@ class TaskSpaceObjectivePublisher(Node):
             pizzaCutSequence1 = [
                 (0.03, 'dbg_pizza_line_points'),
                 (2, 'approach'),
-                (1, 'wait'),
+                (2, 'wait'),
                 (3.0, 'cutLine'),
-                (1, 'wait'),
+                (2, 'wait'),
                 (1.5, 'retract'),
                 (1, 'resetJointsAbovePizza'),
-                (1, 'wait'),
+                (2, 'wait'),
             ]
 
             debug1 = [
@@ -104,6 +110,7 @@ class TaskSpaceObjectivePublisher(Node):
             # self.initSeq = debug1
             # self.loopSeq = debug1
 
+            self.once = ""
 
             #control stuff
             self.xd_pos = np.array([0,0,0])
@@ -184,13 +191,13 @@ class TaskSpaceObjectivePublisher(Node):
             self.pub_Kd_joint.publish(msg_kdj)
             
             # Publish default Kp_cart
-            kpc_values = (default_Kp_cart * Kp_cart_scale).astype(np.float32).tolist()
+            kpc_values = (default_Kp_cart_4 * Kp_cart_scale).astype(np.float32).tolist()
             msg_kpc = Float32MultiArray()
             msg_kpc.data = kpc_values
             self.pub_Kp_cart.publish(msg_kpc)
             
             # Publish default Kd_cart
-            kdc_values = (default_Kd_cart * Kd_cart_scale).astype(np.float32).tolist()
+            kdc_values = (default_Kd_cart_4 * Kd_cart_scale).astype(np.float32).tolist()
             msg_kdc = Float32MultiArray()
             msg_kdc.data = kdc_values
             self.pub_Kd_cart.publish(msg_kdc)
@@ -341,7 +348,42 @@ class TaskSpaceObjectivePublisher(Node):
 
         pass
 
+    def setGains(self,controllertype):
+        
+        skip = 0
+        if controllertype == 4:
+            Kp =  default_Kp_cart_4
+            Kd =  default_Kp_cart_4
+            pass
+        elif controllertype == 5:
+            Kp =  default_Kp_cart_5
+            Kd =  default_Kp_cart_5
+            pass
+        elif controllertype == 0:
+            skip = 1
+            pass
+        else:
+            self.get_logger().warn(f"setGains(): unknonw controller type {controllertype}")
+            Kp =  default_Kp_cart_4
+            Kd =  default_Kp_cart_4
+            pass
+        
+        if not skip:
+            base_val = float(Kp)
+            kpc_values = (base_val * Kp_cart_scale).astype(np.float32).tolist()
+            msg = Float32MultiArray()
+            msg.data = kpc_values
+            self.pub_Kp_cart.publish(msg)
 
+
+            base_val = float(Kd)
+            kdc_values = (base_val * Kd_cart_scale).astype(np.float32).tolist()
+            msg = Float32MultiArray()
+            msg.data = kdc_values
+            self.pub_Kd_cart.publish(msg)
+
+        pass
+    
     def timer_callback(self):
         try:
             now = self.get_clock().now().nanoseconds / 1e9
@@ -490,6 +532,9 @@ class TaskSpaceObjectivePublisher(Node):
             msg = Int32()
             msg.data = int(self.currentControllerType)   # ensure Python int is converted cleanly
             self.pub_controller_type.publish(msg)
+
+            self.setGains(self.currentControllerType)
+
         else:
             pass
 
@@ -499,7 +544,7 @@ class TaskSpaceObjectivePublisher(Node):
             roll_angle = self.xd_roll
             # Choose an arbitrary y-axis (not parallel to z)
             tmp = np.array([1, 0, 0])
-            if np.allclose(z_axis, tmp):
+            if np.abs(np.dot(tmp, z_axis)) > 0.99:  # almost parallel
                 tmp = np.array([0, 1, 0])
 
             # Construct orthonormal frame

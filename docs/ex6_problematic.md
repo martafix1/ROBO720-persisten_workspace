@@ -19,3 +19,12 @@ Chat recomended the following:
  
 
  using sortof Cartesian Impedance Control - quite close to diff() controll, but this one has explicit dampening, - just spring dampener system, not mass, with quite high gains for the caresian part, the robot tracking is much better. Quite high dampening is needed (damp = 1.5)
+
+
+ ## joint 6 just oscilating for some reason. Even heavyli overdampened, the 6 keeps oscilating. 
+ So i decided to take the 6th joint out of the smart joint controller.
+
+
+
+ ## the force measuring NEEDs a revolute joint apparently - cannot be fixed joint 
+ 

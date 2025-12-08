@@ -55,6 +55,8 @@
 #include <kdl/chainiksolvervel_wdls.hpp>
 #include <kdl/chainiksolverpos_nr_jl.hpp>
 #include <kdl/chainjnttojacsolver.hpp>
+#include <kdl/chainjnttojacdotsolver.hpp>
+
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -223,6 +225,7 @@ class MyController_class : public controller_interface::ControllerInterface {
 
   //jacobian solver
   std::unique_ptr<KDL::ChainJntToJacSolver> jac_solver;
+  std::unique_ptr<KDL::ChainJntToJacDotSolver> jac_dot_solver;
 
 
   // joint handles for URDF
@@ -333,7 +336,7 @@ class MyController_class : public controller_interface::ControllerInterface {
   bool useJointSpaceInputs = false;
   Eigen::Vector3d taskpsaceGetPlaneRepulse( Eigen::Vector3d RobotPoint, planeRep_finite rplane );
   Eigen::Vector3d taskpsaceGetPointRepulse( Eigen::Vector3d RobotPoint, pointRep rp );
-
+  Eigen::VectorXd  transformWrenchToTipEigen(const Eigen::VectorXd& x_wrench_sensor);
 
 
 };

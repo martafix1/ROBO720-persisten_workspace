@@ -1,11 +1,14 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panda">
-  <!-- Include the original panda arm with FT sensor -->
-  <xacro:include filename="$(find franka_description)/urdf/effort_panda_arm_ft_sensor.urdf.xacro" />
+
+
+  <!-- Include the custom panda arm with FT sensor (using fixed joint) -->
+  <xacro:include filename="$(find franka_cc_6)/urdf/panda_with_ft_fixed.urdf.xacro" />
+
+
 
   <!-- Add a red cylinder with collision box -->
   <!-- Adjust these values to your desired position, size, and color -->
-  
   <link name="red_cylinder">
     <visual>
       <!-- Position: x, y, z (in meters) -->

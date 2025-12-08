@@ -63,25 +63,61 @@ namespace MyController_namespace
         "panda_joint6",
         "panda_joint7",
     };
-    tip_name = "panda_link7";
+    // tip_name = "panda_link7";
+    tip_name = "panda_tool_ball";
     root_name = "base";
 
     std::cout << "\033[35m ItDidWork: \033[0m constructor" << std::endl;
   }
+
+
+
+Eigen::VectorXd  MyController_class::transformWrenchToTipEigen(const Eigen::VectorXd& x_wrench_sensor)
+{
+    // Make sure input is size 6
+    assert(x_wrench_sensor.size() == 6 && "Input wrench must be 6D");
+
+    // Rotation matrix from sensor_link -> tip (rotation about X by pi/2)
+    Eigen::Matrix3d R;
+    R << 1, 0, 0,
+         0, 0, -1,
+         0, 1, 0;
+
+    // Translation vector from sensor_link -> tip (in sensor frame)
+    Eigen::Vector3d p(0.0, -0.09, 0.0);
+
+    // Skew-symmetric matrix of p
+    Eigen::Matrix3d p_hat;
+    p_hat <<   0, -p.z(),  p.y(),
+             p.z(),    0, -p.x(),
+            -p.y(),  p.x(),   0;
+
+    // Force and torque from sensor
+    Eigen::Vector3d F = x_wrench_sensor.head<3>();
+    Eigen::Vector3d T = x_wrench_sensor.tail<3>();
+
+    // Transform wrench
+    Eigen::Vector3d F_tip = R * F;
+    Eigen::Vector3d T_tip = R * T + p_hat * F_tip; // T_tip = R*T + p x F_tip
+
+    // Output
+    Eigen::VectorXd x_wrench_tip(6);
+    x_wrench_tip << F_tip, T_tip;
+
+    return x_wrench_tip;
+}
+
+
 
   controller_interface::return_type MyController_class::update(
       const rclcpp::Time & /*time*/,
       const rclcpp::Duration &period)
   {
     elapsed_time_ = elapsed_time_ + period;
-
     std::array<double, 7> torqe_command;
-
     updateJointStates();
-
     // Get current force-torque reading
     auto wrench = getFTSensorWrench();
-
 
     // switcheroo as they cannot be assigned.
     for (int i = 0; i < num_joints; i++)
@@ -89,22 +125,22 @@ namespace MyController_namespace
       q_(i) = position_interface_values_(i);
       qdot_(i) = velocity_interface_values_(i);
       exertedEffort_(i) = effort_interface_values_(i);
-
     }
 
     fk_solver_->JntToCart(q_, x_);
 
-
     x_wrench_ << wrench.force.x, wrench.force.y, wrench.force.z,
                 wrench.torque.x, wrench.torque.y, wrench.torque.z;
 
-    // the torques (moments) ARE IGNORED - set to 0
-    Eigen::Vector3d F_fs = x_wrench_.head<3>();
-    Eigen::Vector3d M_fs = Eigen::Vector3d::Zero();
-    Eigen::Matrix3d R_base_tool = Eigen::Map<const Eigen::Matrix<double,3,3,Eigen::RowMajor>>(x_.M.data);
-    F_fs = R_base_tool * Rfs_eigen * F_fs;
+    x_wrench_ = transformWrenchToTipEigen(x_wrench_);
 
-    x_wrench_ << F_fs, M_fs;
+    // // the torques (moments) ARE IGNORED - set to 0
+    // Eigen::Vector3d F_fs = x_wrench_.head<3>();
+    // Eigen::Vector3d M_fs = Eigen::Vector3d::Zero();
+    // Eigen::Matrix3d R_base_tool = Eigen::Map<const Eigen::Matrix<double,3,3,Eigen::RowMajor>>(x_.M.data);
+    // F_fs = R_base_tool * Rfs_eigen * F_fs;
+
+    // x_wrench_ << F_fs, M_fs;
 
     // // required for potential fields:
     // qd_dot_.data.setZero();
@@ -123,6 +159,7 @@ namespace MyController_namespace
       }
       //ex5_potentialFields();
     }
+    //ex3_smarterControllers(controllerType); // 1000Hz
 
     e_.data = qd_.data - q_.data;
     e_dot_.data = qd_dot_.data - qdot_.data;
@@ -136,13 +173,77 @@ namespace MyController_namespace
     // switch from kdl JntArray to eigen for matrix operations
     // Eigen::VectorXd qdot_eigen = qdot_.data;
 
-    
+    if(controllerType==5 || controllerType==4 ){
 
+      KDL::Jacobian J_(num_joints);
+      KDL::Jacobian Jdot_(num_joints);
+      int ret = jac_solver->JntToJac(q_, J_);
+      Eigen::MatrixXd J_eig = J_.data;
+      Eigen::MatrixXd M_eig = M_.data;  
+      Eigen::MatrixXd Mtaskspace_eig =  (J_eig * M_eig.inverse() * J_eig.transpose()).inverse();
+
+      KDL::JntArrayVel qvel(q_); // copy joint positions
+      qvel.qdot = qdot_;         // set joint velocities
+      ret = jac_dot_solver->JntToJacDot(qvel, Jdot_);
+      Eigen::MatrixXd Jdot_eig = Jdot_.data;
+
+      KDL::Twist x_err = KDL::diff(x_, xd_);
+
+      Eigen::VectorXd xd_dot = twist_d; // stationary target
+      Eigen::VectorXd e_x(6);
+      e_x << x_err.vel.x(), x_err.vel.y(), x_err.vel.z(),
+           x_err.rot.x(), x_err.rot.y(), x_err.rot.z();
+
+      
+      Eigen::VectorXd xdot_ = J_eig * qdot_.data;  // 6x1
+      
+      Eigen::VectorXd e_xdot = xd_dot -  xdot_;
+
+      // Compute force-like term in Cartesian space
+      Eigen::VectorXd cartesian_term =  Kd_cartesian_.cwiseProduct(e_xdot)
+                                      + Kp_cartesian_.cwiseProduct(e_x);
+                                      //- Mtaskspace_eig * (Jdot_eig*qdot_.data);   // optional, zero if ignoring
+                                      //- x_wrench_;        // external wrench
+                                      //+ Mtaskspace_eig * xdd_des
+      
+      
+
+      double lambda = 0.05; // damping factor
+      Eigen::MatrixXd I6 = Eigen::MatrixXd::Identity(6,6);
+      Eigen::MatrixXd J_damp_pinv = J_eig.transpose() *  //J#
+                              ( (J_eig * J_eig.transpose() + lambda*lambda * I6).inverse() );
+      
+
+      Eigen::VectorXd y = J_damp_pinv * (Mtaskspace_eig.inverse()* cartesian_term); // (Mtaskspace_eig.inverse()* cartesian_term)
+      
+      tau_d_.data = M_eig*y + C_.data + G_.data ; //+ J_eig.transpose() * x_wrench_;
+
+    for (int i = 0; i < 7; i++)
+    {
+
+      miscData[i+70] = y(i);
+
+    }
+
+
+    }
+    else{
     aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
     // aux_d_.data = (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
     comp_d_.data = C_.data + G_.data;
     tau_d_.data = aux_d_.data + comp_d_.data;
 
+    tau_d_.data(6) += Kd_.data(6)*e_dot_.data(6);
+    }
+
+
+
+    for (int i = 0; i < 6; i++)
+    {
+
+      miscData[i+60] = x_wrench_(i);
+
+    }
 
     //  for (int i = 0; i < num_joints; i++)
     // {
@@ -686,6 +787,8 @@ namespace MyController_namespace
     );
 
     jac_solver = std::make_unique<KDL::ChainJntToJacSolver>(kdl_chain_);
+    jac_dot_solver = std::make_unique<KDL::ChainJntToJacDotSolver>(kdl_chain_);
+    
 
     M_.resize(kdl_chain_.getNrOfJoints());
     C_.resize(kdl_chain_.getNrOfJoints());
@@ -1071,7 +1174,7 @@ namespace MyController_namespace
       qd_dot_.data.setConstant(0);
       
       fctr_Spos.setConstant(1);
-      fctr_Spos(2) = 0; //z axis
+      fctr_Spos(2) = 0.01; //z axis
 
 
 
